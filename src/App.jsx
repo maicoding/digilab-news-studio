@@ -82,8 +82,9 @@ const getNewsLayoutPresets = (presetId) => {
         weight: '600',
       },
       kicker: {
-        x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.43 : 0.47,
+        x: 0.93,
+        y: isPortrait ? 0.07 : 0.08,
+        align: 'right',
       },
       caption: {
         x: isPortrait ? 0.1 : 0.11,
@@ -116,8 +117,9 @@ const getNewsLayoutPresets = (presetId) => {
         weight: '600',
       },
       kicker: {
-        x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.1 : 0.11,
+        x: 0.93,
+        y: isPortrait ? 0.07 : 0.08,
+        align: 'right',
       },
       caption: {
         x: isPortrait ? 0.1 : 0.11,
@@ -150,8 +152,9 @@ const getNewsLayoutPresets = (presetId) => {
         weight: '600',
       },
       kicker: {
-        x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.5 : 0.54,
+        x: 0.93,
+        y: isPortrait ? 0.07 : 0.08,
+        align: 'right',
       },
       caption: {
         x: isPortrait ? 0.1 : 0.11,
@@ -164,6 +167,37 @@ const getNewsLayoutPresets = (presetId) => {
     },
   ];
 };
+
+const CONTENT_PRESETS = [
+  {
+    id: 'news-update',
+    label: 'News',
+    kicker: 'NEWS UPDATE',
+    headline: 'Digitale\nEntwicklung',
+    textbox: 'Kurz, klar und gut lesbar. Diese Textbox liefert den Kontext zur Headline und bleibt ruhig genug, damit Form, Logo und CI weiter wirken.',
+  },
+  {
+    id: 'workshop',
+    label: 'Workshop',
+    kicker: 'WORKSHOP',
+    headline: 'Tools fuer\nkreative KI',
+    textbox: 'Praxisnaher Workshop mit Inputs, Beispielen und offener Fragerunde. Ideal fuer erste Einblicke, Austausch und konkrete Anwendungen im DigiLab.ai Kontext.',
+  },
+  {
+    id: 'termin',
+    label: 'Termin',
+    kicker: 'TERMIN',
+    headline: 'Sprechstunde\nim DigiLab.ai',
+    textbox: 'Komm mit Fragen, Projekten oder Ideen vorbei. Wir schauen gemeinsam auf Tools, Workflows und naechste Schritte fuer dein Vorhaben.',
+  },
+  {
+    id: 'open-call',
+    label: 'Open Call',
+    kicker: 'OPEN CALL',
+    headline: 'Ideen, Projekte,\nMitmachen',
+    textbox: 'Wir suchen Themen, Prototypen und Experimente rund um digitale Gestaltung und KI. Reiche deine Idee ein und entwickle sie mit uns weiter.',
+  },
+];
 
 const deepSet = (source, path, value) => {
   const keys = path.split('.');
@@ -497,6 +531,10 @@ const App = () => {
           if (layer.kind === 'text' && layer.role === 'kicker') {
             return {
               ...layer,
+              text: {
+                ...layer.text,
+                align: layout.kicker.align ?? layer.text.align,
+              },
               transform: {
                 ...layer.transform,
                 x: layout.kicker.x,
@@ -523,6 +561,65 @@ const App = () => {
                 ...layer.transform,
                 x: layout.logo.x,
                 y: layout.logo.y,
+              },
+            };
+          }
+
+          return layer;
+        }),
+      };
+    });
+  };
+
+  const applyContentPreset = (presetId) => {
+    const presetDef = CONTENT_PRESETS.find((item) => item.id === presetId);
+    if (!presetDef) {
+      return;
+    }
+
+    setScene((current) => {
+      let headlineAssigned = false;
+      let textboxAssigned = false;
+      let kickerAssigned = false;
+
+      return {
+        ...current,
+        layers: current.layers.map((layer) => {
+          if (layer.kind !== 'text') {
+            return layer;
+          }
+
+          if (!kickerAssigned && layer.role === 'kicker') {
+            kickerAssigned = true;
+            return {
+              ...layer,
+              text: {
+                ...layer.text,
+                value: presetDef.kicker,
+                align: 'right',
+              },
+            };
+          }
+
+          if (!headlineAssigned && layer.role === 'headline') {
+            headlineAssigned = true;
+            return {
+              ...layer,
+              text: {
+                ...layer.text,
+                value: presetDef.headline,
+              },
+            };
+          }
+
+          if (!textboxAssigned && (layer.role === 'textbox' || layer.role === 'body')) {
+            textboxAssigned = true;
+            return {
+              ...layer,
+              role: 'textbox',
+              text: {
+                ...layer.text,
+                value: presetDef.textbox,
               },
             };
           }
@@ -844,6 +941,19 @@ const App = () => {
           </div>
           <div className="status-pill">
             Empfehlung: kurze Headline mit 1 bis 2 Zeilen plus eine ruhige Textbox mit 3 bis 6 Zeilen.
+          </div>
+        </Section>
+
+        <Section title="Inhalt Presets" icon={Type}>
+          <div className="button-row">
+            {CONTENT_PRESETS.map((item) => (
+              <button key={item.id} className="ghost-button small-chip" type="button" onClick={() => applyContentPreset(item.id)}>
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="status-pill">
+            Setzt Kicker, Headline und Textbox mit sinnvollen Starttexten. Dein Layout bleibt dabei erhalten.
           </div>
         </Section>
 
