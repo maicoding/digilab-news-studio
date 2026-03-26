@@ -208,7 +208,7 @@ const textDefaults = {
     name: 'Caption',
     x: 0.12,
     y: 0.93,
-    value: 'digilab.ai',
+    value: 'digilab.ai fh dortmund',
     width: 0.28,
     size: 18,
     font: 'Space Mono',
