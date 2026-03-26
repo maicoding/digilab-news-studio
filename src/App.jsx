@@ -1023,6 +1023,33 @@ const App = () => {
                   <SliderField label="Size" value={activeLayer.shape.size} min={0.08} max={0.9} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'shape.size', value)} />
                 </div>
                 <PaletteSwatches onPick={(color) => updateLayer(activeLayer.id, 'shape.fill', color)} />
+                <UploadButton
+                  label={activeLayer.shape.imageSrc ? 'Bild in Form ersetzen' : 'Bild in Form hochladen'}
+                  accept="image/*"
+                  onSelect={(event) => handleAssetUpload(event, ({ file, src }) => {
+                    replaceLayer(activeLayer.id, (layer) => ({
+                      ...layer,
+                      shape: {
+                        ...layer.shape,
+                        imageSrc: src,
+                        imageName: file.name,
+                      },
+                    }));
+                  })}
+                />
+                <div className="status-pill">
+                  {activeLayer.shape.imageSrc ? `Formbild: ${activeLayer.shape.imageName}` : 'Kein Bild in der Form'}
+                </div>
+                <div className="field-grid">
+                  <SliderField label="Bild Deckkraft" value={activeLayer.shape.imageOpacity ?? 1} min={0} max={1} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'shape.imageOpacity', value)} />
+                  <SliderField label="Bild Scale" value={activeLayer.shape.imageScale ?? 1} min={0.6} max={1.8} step={0.01} format={(value) => `${value.toFixed(2)}x`} onChange={(value) => updateLayer(activeLayer.id, 'shape.imageScale', value)} />
+                </div>
+                <SelectField
+                  label="Bild Blend Mode"
+                  value={activeLayer.shape.imageBlendMode ?? 'source-over'}
+                  options={BLEND_MODES}
+                  onChange={(value) => updateLayer(activeLayer.id, 'shape.imageBlendMode', value)}
+                />
                 <div className="field-grid">
                   <SliderField label="Pixel" value={activeLayer.shape.pixelSize} min={12} max={84} step={1} format={(value) => `${Math.round(value)}`} onChange={(value) => updateLayer(activeLayer.id, 'shape.pixelSize', value)} />
                   <SliderField label="Punkte" value={activeLayer.shape.points} min={6} max={24} step={1} format={(value) => `${Math.round(value)}`} onChange={(value) => updateLayer(activeLayer.id, 'shape.points', value)} />

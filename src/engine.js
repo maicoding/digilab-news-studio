@@ -195,7 +195,7 @@ const drawTextLayer = (ctx, layer, width, height) => {
   ctx.restore();
 };
 
-const drawPixelShape = (ctx, layer, width, height) => {
+const drawPixelShape = (ctx, layer, width, height, getImage) => {
   const minDim = Math.min(width, height);
   const drawSize = minDim * layer.shape.size * layer.transform.scale;
   const resolution = clamp(Math.round(layer.shape.pixelSize), 12, 84);
@@ -255,11 +255,34 @@ const drawPixelShape = (ctx, layer, width, height) => {
     sctx.restore();
   }
 
+  const shapeImage = layer.shape.imageSrc ? getImage(layer.shape.imageSrc) : null;
+
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.translate(layer.transform.x * width, layer.transform.y * height);
   ctx.rotate((layer.transform.rotation * Math.PI) / 180);
   ctx.drawImage(scratchCanvas, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+
+  if (shapeImage) {
+    const contentSize = clamp(Math.round(resolution * 8), 192, 1024);
+    const contentCanvas = getScratchCanvas(`shape-image:${layer.id}:${contentSize}`, contentSize, contentSize);
+    const cctx = contentCanvas.getContext('2d');
+    const fitScale = Math.max(contentSize / shapeImage.width, contentSize / shapeImage.height) * (layer.shape.imageScale ?? 1);
+    const drawWidth = shapeImage.width * fitScale;
+    const drawHeight = shapeImage.height * fitScale;
+
+    cctx.save();
+    cctx.drawImage(shapeImage, (contentSize - drawWidth) / 2, (contentSize - drawHeight) / 2, drawWidth, drawHeight);
+    cctx.globalCompositeOperation = 'destination-in';
+    cctx.imageSmoothingEnabled = false;
+    cctx.drawImage(scratchCanvas, 0, 0, contentSize, contentSize);
+    cctx.restore();
+
+    ctx.globalAlpha = layer.shape.imageOpacity ?? 1;
+    ctx.globalCompositeOperation = layer.shape.imageBlendMode ?? 'source-over';
+    ctx.drawImage(contentCanvas, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+  }
+
   ctx.restore();
 };
 
@@ -393,7 +416,7 @@ export const renderScene = ({ ctx, width, height, scene, getImage }) => {
     ctx.filter = layer.blur > 0 ? `blur(${layer.blur}px)` : 'none';
 
     if (layer.kind === 'shape') {
-      drawPixelShape(ctx, layer, width, height);
+      drawPixelShape(ctx, layer, width, height, getImage);
     } else if (layer.kind === 'text') {
       drawTextLayer(ctx, layer, width, height);
     } else if (layer.kind === 'logo') {

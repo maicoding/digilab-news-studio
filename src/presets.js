@@ -106,6 +106,11 @@ export const createShapeLayer = (index, overrides = {}) => ({
     bites: overrides.bites ?? 2,
     biteSize: overrides.biteSize ?? 0.11,
     seed: overrides.seed ?? Math.floor(Math.random() * 100000),
+    imageSrc: overrides.imageSrc ?? null,
+    imageName: overrides.imageName ?? 'Kein Bild',
+    imageScale: overrides.imageScale ?? 1,
+    imageOpacity: overrides.imageOpacity ?? 1,
+    imageBlendMode: overrides.imageBlendMode ?? 'source-over',
   },
 });
 
