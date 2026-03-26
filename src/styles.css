@@ -451,6 +451,38 @@ textarea {
   display: block;
 }
 
+.stage__grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stage__grid::before,
+.stage__grid::after {
+  content: '';
+  position: absolute;
+}
+
+.stage__grid::before {
+  inset: var(--grid-margin-y, 6%) var(--grid-margin-x, 6%);
+  border: 1px solid rgba(255, 245, 0, 0.7);
+  background-image:
+    linear-gradient(to right, rgba(255, 245, 0, 0.22) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 245, 0, 0.14) 1px, transparent 1px);
+  background-size:
+    calc(100% / var(--grid-columns, 12)) 100%,
+    100% calc(100% / var(--grid-rows, 12));
+}
+
+.stage__grid::after {
+  left: 50%;
+  top: var(--grid-margin-y, 6%);
+  bottom: var(--grid-margin-y, 6%);
+  width: 1px;
+  background: rgba(255, 245, 0, 0.42);
+  transform: translateX(-0.5px);
+}
+
 .stage__overlay {
   position: absolute;
   inset: 0;

@@ -39,6 +39,24 @@ const COLOR_PRESETS = [
   { id: 'hellblau-schwarz', label: 'Hellblau / Schwarz', background: '#04090D', secondary: '#001722', accent: '#00FDFF', contrast: '#FFFFFF' },
 ];
 
+const getGridSpec = (presetId) => {
+  if (presetId === 'portrait') {
+    return {
+      columns: 12,
+      rows: 16,
+      marginX: 0.075,
+      marginY: 0.055,
+    };
+  }
+
+  return {
+    columns: 12,
+    rows: 12,
+    marginX: 0.06,
+    marginY: 0.06,
+  };
+};
+
 const getNewsLayoutPresets = (presetId) => {
   const isPortrait = presetId === 'portrait';
   return [
@@ -284,6 +302,7 @@ const App = () => {
 
   const preset = CANVAS_PRESETS.find((item) => item.id === scene.presetId) ?? CANVAS_PRESETS[0];
   const activeLayer = scene.layers.find((layer) => layer.id === activeLayerId) ?? null;
+  const gridSpec = getGridSpec(scene.presetId);
 
   const getPrimaryTextLayer = (role) => scene.layers.find((layer) => layer.kind === 'text' && layer.role === role) ?? null;
 
@@ -796,6 +815,7 @@ const App = () => {
             format={(value) => `${Math.round(value * 100)}%`}
             onChange={setPreviewZoom}
           />
+          <ToggleField label="Grid einblenden" checked={scene.guides?.showGrid ?? true} onChange={(value) => updateScene('guides.showGrid', value)} />
           <div className="button-row">
             <button className="ghost-button" type="button" onClick={randomizeShapes}>
               <Shapes size={16} />
@@ -934,6 +954,14 @@ const App = () => {
                   onClick={() => updateLayer(layer.id, 'visible', !layer.visible)}
                 >
                   {layer.visible ? <Eye size={15} /> : <EyeOff size={15} />}
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => deleteLayer(layer.id)}
+                  aria-label={`${layer.name} löschen`}
+                >
+                  <Trash2 size={15} />
                 </button>
               </div>
             ))}
@@ -1185,6 +1213,17 @@ const App = () => {
                 height: preset.height * previewScale,
               }}
             />
+            {scene.guides?.showGrid && (
+              <div
+                className="stage__grid"
+                style={{
+                  '--grid-columns': gridSpec.columns,
+                  '--grid-rows': gridSpec.rows,
+                  '--grid-margin-x': `${gridSpec.marginX * 100}%`,
+                  '--grid-margin-y': `${gridSpec.marginY * 100}%`,
+                }}
+              />
+            )}
             <div className="stage__overlay">
               {layerBounds.map(({ layerId, bounds }) => (
                 <button
