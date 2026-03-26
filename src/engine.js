@@ -94,9 +94,14 @@ const getTextFont = (text, scale = 1) => {
   return `${style}${text.weight} ${Math.round(text.size * scale)}px "${text.font}", sans-serif`;
 };
 
+const getLineHeight = (text, scale = 1) => {
+  const fontSize = text.size * scale;
+  const roleFactor = text.role === 'headline' ? 0.72 : 1;
+  return Math.max(fontSize * 0.46, fontSize * text.leading * roleFactor);
+};
+
 const layoutText = (ctx, text, maxWidth, scale = 1) => {
   const output = [];
-  const fontSize = text.size * scale;
   const paragraphs = String(text.value ?? '').split('\n');
   ctx.font = getTextFont(text, scale);
 
@@ -126,7 +131,7 @@ const layoutText = (ctx, text, maxWidth, scale = 1) => {
 
   return {
     lines: output,
-    lineHeight: fontSize * text.leading,
+    lineHeight: getLineHeight(text, scale),
   };
 };
 
@@ -170,7 +175,7 @@ const drawTextLayer = (ctx, layer, width, height) => {
   const maxWidth = width * text.width;
   const anchorX = layer.transform.x * width;
   const anchorY = layer.transform.y * height;
-  const { lines, lineHeight } = layoutText(ctx, text, maxWidth);
+  const { lines, lineHeight } = layoutText(ctx, { ...text, role: layer.role }, maxWidth);
 
   ctx.save();
   ctx.translate(anchorX, anchorY);
@@ -376,7 +381,7 @@ export const measureLayerBounds = ({ layer, width, height, getImage }) => {
   if (layer.kind === 'text') {
     const ctx = measureCanvas.getContext('2d');
     const maxWidth = width * layer.text.width;
-    const { lines, lineHeight } = layoutText(ctx, layer.text, maxWidth);
+    const { lines, lineHeight } = layoutText(ctx, { ...layer.text, role: layer.role }, maxWidth);
     ctx.font = getTextFont(layer.text);
     const longestLine = lines.reduce((max, line, index) => {
       if (shouldJustifyLine(layer.text.align, line, index, lines)) {
