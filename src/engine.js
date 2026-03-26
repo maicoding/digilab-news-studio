@@ -122,9 +122,6 @@ const layoutText = (ctx, text, maxWidth, scale = 1) => {
     if (line) {
       output.push(line);
     }
-    if (paragraphIndex < paragraphs.length - 1) {
-      output.push('');
-    }
   });
 
   return {
