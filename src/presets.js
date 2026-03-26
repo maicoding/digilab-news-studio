@@ -85,6 +85,7 @@ export const BUILT_IN_LOGOS = [
 
 export const TEXT_ROLE_OPTIONS = [
   { value: 'headline', label: 'Headline' },
+  { value: 'textbox', label: 'Textbox' },
   { value: 'body', label: 'Body' },
   { value: 'kicker', label: 'Kicker' },
   { value: 'caption', label: 'Caption' },
@@ -175,6 +176,22 @@ const textDefaults = {
     weight: '700',
     leading: 1.3,
     tracking: 0.1,
+    color: '#F3F1E8',
+    align: 'left',
+    uppercase: false,
+    italic: false,
+  },
+  textbox: {
+    name: 'Textbox',
+    x: 0.12,
+    y: 0.74,
+    value: 'Kurz, klar und gut lesbar. Diese Textbox liefert den Kontext zur Headline und bleibt ruhig genug, damit Form, Logo und CI weiter wirken koennen.',
+    width: 0.58,
+    size: 31,
+    font: 'Manrope',
+    weight: '600',
+    leading: 1.24,
+    tracking: 0,
     color: '#F3F1E8',
     align: 'left',
     uppercase: false,
@@ -276,6 +293,7 @@ export const createImageLayer = (index, overrides = {}) => ({
 
 export const createInitialScene = () => ({
   presetId: 'square',
+  newsLayoutPresetId: 'news-compact',
   background: {
     mode: 'solid',
     colorA: '#050505',
@@ -319,7 +337,7 @@ export const createInitialScene = () => ({
     createLogoLayer(1),
     createTextLayer(1, 'kicker'),
     createTextLayer(1, 'headline'),
-    createTextLayer(1, 'body'),
+    createTextLayer(1, 'textbox'),
     createTextLayer(1, 'caption'),
   ],
 });

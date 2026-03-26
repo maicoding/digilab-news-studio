@@ -39,6 +39,114 @@ const COLOR_PRESETS = [
   { id: 'hellblau-schwarz', label: 'Hellblau / Schwarz', background: '#04090D', secondary: '#001722', accent: '#00FDFF', contrast: '#FFFFFF' },
 ];
 
+const getNewsLayoutPresets = (presetId) => {
+  const isPortrait = presetId === 'portrait';
+  return [
+    {
+      id: 'news-compact',
+      label: 'News Compact',
+      headline: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.5 : 0.54,
+        width: isPortrait ? 0.76 : 0.74,
+        size: isPortrait ? 116 : 104,
+        leading: 0.92,
+        tracking: -1,
+        weight: '700',
+      },
+      textbox: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.73 : 0.76,
+        width: isPortrait ? 0.54 : 0.56,
+        size: isPortrait ? 35 : 31,
+        leading: 1.24,
+        tracking: 0,
+        weight: '600',
+      },
+      kicker: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.43 : 0.47,
+      },
+      caption: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.94 : 0.93,
+      },
+      logo: {
+        x: isPortrait ? 0.84 : 0.82,
+        y: isPortrait ? 0.1 : 0.12,
+      },
+    },
+    {
+      id: 'news-editorial',
+      label: 'News Editorial',
+      headline: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.16 : 0.18,
+        width: isPortrait ? 0.62 : 0.6,
+        size: isPortrait ? 102 : 94,
+        leading: 0.94,
+        tracking: -0.8,
+        weight: '700',
+      },
+      textbox: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.78 : 0.8,
+        width: isPortrait ? 0.48 : 0.5,
+        size: isPortrait ? 34 : 30,
+        leading: 1.28,
+        tracking: 0,
+        weight: '600',
+      },
+      kicker: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.1 : 0.11,
+      },
+      caption: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.94 : 0.93,
+      },
+      logo: {
+        x: isPortrait ? 0.85 : 0.84,
+        y: isPortrait ? 0.1 : 0.12,
+      },
+    },
+    {
+      id: 'news-hero',
+      label: 'News Hero',
+      headline: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.58 : 0.61,
+        width: isPortrait ? 0.78 : 0.76,
+        size: isPortrait ? 126 : 112,
+        leading: 0.9,
+        tracking: -1.2,
+        weight: '800',
+      },
+      textbox: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.84 : 0.86,
+        width: isPortrait ? 0.46 : 0.48,
+        size: isPortrait ? 31 : 28,
+        leading: 1.26,
+        tracking: 0,
+        weight: '600',
+      },
+      kicker: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.5 : 0.54,
+      },
+      caption: {
+        x: isPortrait ? 0.1 : 0.11,
+        y: isPortrait ? 0.94 : 0.93,
+      },
+      logo: {
+        x: isPortrait ? 0.86 : 0.85,
+        y: isPortrait ? 0.11 : 0.12,
+      },
+    },
+  ];
+};
+
 const deepSet = (source, path, value) => {
   const keys = path.split('.');
   const clone = Array.isArray(source) ? [...source] : { ...source };
@@ -177,6 +285,8 @@ const App = () => {
   const preset = CANVAS_PRESETS.find((item) => item.id === scene.presetId) ?? CANVAS_PRESETS[0];
   const activeLayer = scene.layers.find((layer) => layer.id === activeLayerId) ?? null;
 
+  const getPrimaryTextLayer = (role) => scene.layers.find((layer) => layer.kind === 'text' && layer.role === role) ?? null;
+
   const applyColorPreset = (scheme) => {
     setScene((current) => {
       let shapeIndex = 0;
@@ -203,7 +313,7 @@ const App = () => {
             const nextColor =
               layer.role === 'headline' || layer.role === 'caption'
                 ? scheme.accent
-                : layer.role === 'body'
+                : layer.role === 'body' || layer.role === 'textbox'
                   ? scheme.contrast
                   : scheme.contrast;
             return {
@@ -309,6 +419,98 @@ const App = () => {
       const layer = createTextLayer(current.layers.filter((item) => item.kind === 'text').length + 1, role);
       setActiveLayerId(layer.id);
       return { ...current, layers: [...current.layers, layer] };
+    });
+  };
+
+  const applyNewsLayoutPreset = (presetId) => {
+    const layout = getNewsLayoutPresets(scene.presetId).find((item) => item.id === presetId);
+    if (!layout) {
+      return;
+    }
+
+    setScene((current) => {
+      let textboxAssigned = false;
+      return {
+        ...current,
+        newsLayoutPresetId: presetId,
+        layers: current.layers.map((layer) => {
+          if (layer.kind === 'text' && layer.role === 'headline') {
+            return {
+              ...layer,
+              text: {
+                ...layer.text,
+                width: layout.headline.width,
+                size: layout.headline.size,
+                leading: layout.headline.leading,
+                tracking: layout.headline.tracking,
+                weight: layout.headline.weight,
+              },
+              transform: {
+                ...layer.transform,
+                x: layout.headline.x,
+                y: layout.headline.y,
+              },
+            };
+          }
+
+          if (layer.kind === 'text' && !textboxAssigned && (layer.role === 'textbox' || layer.role === 'body')) {
+            textboxAssigned = true;
+            return {
+              ...layer,
+              role: 'textbox',
+              name: layer.name.includes('Body') ? layer.name.replace('Body', 'Textbox') : layer.name,
+              text: {
+                ...layer.text,
+                width: layout.textbox.width,
+                size: layout.textbox.size,
+                leading: layout.textbox.leading,
+                tracking: layout.textbox.tracking,
+                weight: layout.textbox.weight,
+              },
+              transform: {
+                ...layer.transform,
+                x: layout.textbox.x,
+                y: layout.textbox.y,
+              },
+            };
+          }
+
+          if (layer.kind === 'text' && layer.role === 'kicker') {
+            return {
+              ...layer,
+              transform: {
+                ...layer.transform,
+                x: layout.kicker.x,
+                y: layout.kicker.y,
+              },
+            };
+          }
+
+          if (layer.kind === 'text' && layer.role === 'caption') {
+            return {
+              ...layer,
+              transform: {
+                ...layer.transform,
+                x: layout.caption.x,
+                y: layout.caption.y,
+              },
+            };
+          }
+
+          if (layer.kind === 'logo') {
+            return {
+              ...layer,
+              transform: {
+                ...layer.transform,
+                x: layout.logo.x,
+                y: layout.logo.y,
+              },
+            };
+          }
+
+          return layer;
+        }),
+      };
     });
   };
 
@@ -606,6 +808,25 @@ const App = () => {
           </div>
         </Section>
 
+        <Section title="News Layout" icon={Type}>
+          <SelectField
+            label="Preset"
+            value={scene.newsLayoutPresetId ?? 'news-compact'}
+            options={getNewsLayoutPresets(scene.presetId).map((item) => ({ value: item.id, label: item.label }))}
+            onChange={applyNewsLayoutPreset}
+          />
+          <div className="button-row">
+            {getNewsLayoutPresets(scene.presetId).map((item) => (
+              <button key={item.id} className="ghost-button small-chip" type="button" onClick={() => applyNewsLayoutPreset(item.id)}>
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="status-pill">
+            Empfehlung: kurze Headline mit 1 bis 2 Zeilen plus eine ruhige Textbox mit 3 bis 6 Zeilen.
+          </div>
+        </Section>
+
         <Section title="Background & CI" icon={Palette}>
           <div className="mode-row">
             {[
@@ -682,9 +903,9 @@ const App = () => {
               <Type size={16} />
               Headline
             </button>
-            <button className="ghost-button" type="button" onClick={() => addTextLayer('body')}>
+            <button className="ghost-button" type="button" onClick={() => addTextLayer('textbox')}>
               <Type size={16} />
-              Textblock
+              Textbox
             </button>
             <button className="ghost-button" type="button" onClick={addImageLayer}>
               <ImagePlus size={16} />
