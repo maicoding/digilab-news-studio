@@ -143,6 +143,31 @@ const getTextLeft = (align, x, width) => {
   return x;
 };
 
+const shouldJustifyLine = (align, line, index, lines) => (
+  align === 'justify' &&
+  line.trim().includes(' ') &&
+  index < lines.length - 1 &&
+  lines[index + 1] !== ''
+);
+
+const drawJustifiedLine = (ctx, line, y, maxWidth, tracking) => {
+  const words = line.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) {
+    ctx.fillText(line, 0, y);
+    return;
+  }
+
+  const wordWidths = words.map((word) => ctx.measureText(word).width + Math.max(0, word.length - 1) * tracking);
+  const totalWordsWidth = wordWidths.reduce((sum, width) => sum + width, 0);
+  const gap = (maxWidth - totalWordsWidth) / (words.length - 1);
+
+  let cursorX = 0;
+  words.forEach((word, index) => {
+    ctx.fillText(word, cursorX, y);
+    cursorX += wordWidths[index] + gap;
+  });
+};
+
 const drawTextLayer = (ctx, layer, width, height) => {
   const text = layer.text;
   const maxWidth = width * text.width;
@@ -156,11 +181,16 @@ const drawTextLayer = (ctx, layer, width, height) => {
   ctx.fillStyle = text.color;
   ctx.font = getTextFont(text);
   ctx.textBaseline = 'top';
-  ctx.textAlign = text.align;
+  ctx.textAlign = text.align === 'justify' ? 'left' : text.align;
   ctx.letterSpacing = `${text.tracking}px`;
 
   lines.forEach((line, index) => {
-    ctx.fillText(line, 0, index * lineHeight);
+    const y = index * lineHeight;
+    if (shouldJustifyLine(text.align, line, index, lines)) {
+      drawJustifiedLine(ctx, line, y, maxWidth, text.tracking);
+    } else {
+      ctx.fillText(line, 0, y);
+    }
   });
   ctx.restore();
 };
@@ -328,7 +358,10 @@ export const measureLayerBounds = ({ layer, width, height, getImage }) => {
     const maxWidth = width * layer.text.width;
     const { lines, lineHeight } = layoutText(ctx, layer.text, maxWidth);
     ctx.font = getTextFont(layer.text);
-    const longestLine = lines.reduce((max, line) => {
+    const longestLine = lines.reduce((max, line, index) => {
+      if (shouldJustifyLine(layer.text.align, line, index, lines)) {
+        return Math.max(max, maxWidth);
+      }
       const candidate = ctx.measureText(line).width + Math.max(0, line.length - 1) * layer.text.tracking;
       return Math.max(max, candidate);
     }, 0);

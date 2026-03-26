@@ -1143,12 +1143,13 @@ const App = () => {
                 <div className="field-grid">
                   <SelectField label="Font" value={activeLayer.text.font} options={GOOGLE_FONTS} onChange={(value) => updateLayer(activeLayer.id, 'text.font', value)} />
                   <SelectField
-                    label="Align"
+                    label="Ausrichtung"
                     value={activeLayer.text.align}
                     options={[
-                      { value: 'left', label: 'Left' },
-                      { value: 'center', label: 'Center' },
-                      { value: 'right', label: 'Right' },
+                      { value: 'left', label: 'Links' },
+                      { value: 'center', label: 'Mittig' },
+                      { value: 'right', label: 'Rechts' },
+                      { value: 'justify', label: 'Blocksatz' },
                     ]}
                     onChange={(value) => updateLayer(activeLayer.id, 'text.align', value)}
                   />
@@ -1158,7 +1159,7 @@ const App = () => {
                   <SliderField label="Breite" value={activeLayer.text.width} min={0.12} max={0.94} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'text.width', value)} />
                 </div>
                 <div className="field-grid">
-                  <SliderField label="Leading" value={activeLayer.text.leading} min={0.8} max={1.8} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'text.leading', value)} />
+                  <SliderField label="Zeilenabstand" value={activeLayer.text.leading} min={0.8} max={1.8} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'text.leading', value)} />
                   <SliderField label="Tracking" value={activeLayer.text.tracking} min={-4} max={8} step={0.1} onChange={(value) => updateLayer(activeLayer.id, 'text.tracking', value)} />
                 </div>
                 <div className="field-grid">
