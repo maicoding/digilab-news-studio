@@ -1,45 +1,50 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity,
+  ArrowDown,
+  ArrowUp,
   Copy,
   Download,
   Eye,
   EyeOff,
-  Grid2x2,
   ImagePlus,
   Layers,
-  Pause,
-  Play,
+  Palette,
   Plus,
   RotateCcw,
-  SlidersHorizontal,
-  Sparkles,
+  Shapes,
+  Trash2,
   Type,
   Upload,
-  Wand2,
 } from 'lucide-react';
 import {
-  ARRANGEMENTS,
   BLEND_MODES,
+  BRAND_COLORS,
   BUILT_IN_LOGOS,
   CANVAS_PRESETS,
   GOOGLE_FONTS,
-  LOOP_OPTIONS,
-  SHAPE_PRESETS,
-  WAVE_OPTIONS,
+  TEXT_ROLE_OPTIONS,
   createImageLayer,
   createInitialScene,
   createLogoLayer,
   createShapeLayer,
   createTextLayer,
 } from './presets.js';
-import { renderScene } from './engine.js';
+import { measureLayerBounds, renderScene } from './engine.js';
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const COLOR_PRESETS = [
+  { id: 'gelb-schwarz', label: 'Gelb / Schwarz', background: '#050505', secondary: '#111111', accent: '#FFF500', contrast: '#FFFFFF' },
+  { id: 'blau-weiss', label: 'Blau / Weiß', background: '#0A163C', secondary: '#3355FF', accent: '#FFFFFF', contrast: '#FFF500' },
+  { id: 'pink-lila', label: 'Pink / Lila', background: '#180718', secondary: '#9933FF', accent: '#FF66FF', contrast: '#FFFFFF' },
+  { id: 'hellblau-schwarz', label: 'Hellblau / Schwarz', background: '#04090D', secondary: '#001722', accent: '#00FDFF', contrast: '#FFFFFF' },
+];
 
 const deepSet = (source, path, value) => {
   const keys = path.split('.');
   const clone = Array.isArray(source) ? [...source] : { ...source };
   let cursor = clone;
   let original = source;
+
   keys.forEach((key, index) => {
     if (index === keys.length - 1) {
       cursor[key] = value;
@@ -49,10 +54,9 @@ const deepSet = (source, path, value) => {
     cursor = cursor[key];
     original = original[key];
   });
+
   return clone;
 };
-
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const useElementSize = (ref) => {
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -68,6 +72,7 @@ const useElementSize = (ref) => {
         height: entry.contentRect.height,
       });
     });
+
     observer.observe(ref.current);
     return () => observer.disconnect();
   }, [ref]);
@@ -100,6 +105,28 @@ const SelectField = ({ label, value, options, onChange }) => (
   </label>
 );
 
+const ToggleField = ({ label, checked, onChange }) => (
+  <label className="toggle">
+    <span>{label}</span>
+    <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+  </label>
+);
+
+const PaletteSwatches = ({ onPick }) => (
+  <div className="swatch-row">
+    {BRAND_COLORS.map((color) => (
+      <button
+        key={color}
+        type="button"
+        className="swatch"
+        style={{ background: color }}
+        onClick={() => onPick(color)}
+        aria-label={color}
+      />
+    ))}
+  </div>
+);
+
 const ColorField = ({ label, value, onChange }) => (
   <label className="field">
     <div className="field__head">
@@ -129,13 +156,7 @@ const UploadButton = ({ label, accept, onSelect }) => {
         <Upload size={16} />
         {label}
       </button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        className="sr-only"
-        onChange={(event) => onSelect(event)}
-      />
+      <input ref={inputRef} type="file" accept={accept} className="sr-only" onChange={onSelect} />
     </div>
   );
 };
@@ -143,23 +164,85 @@ const UploadButton = ({ label, accept, onSelect }) => {
 const App = () => {
   const initialScene = useMemo(() => createInitialScene(), []);
   const [scene, setScene] = useState(initialScene);
-  const [activeLayerId, setActiveLayerId] = useState(initialScene.layers[0]?.id ?? null);
-  const [logoLibrary, setLogoLibrary] = useState(BUILT_IN_LOGOS);
+  const [activeLayerId, setActiveLayerId] = useState(initialScene.layers[initialScene.layers.length - 1]?.id ?? null);
   const [assetVersion, setAssetVersion] = useState(0);
-  const [previewZoom, setPreviewZoom] = useState(1);
-  const imageCacheRef = useRef(new Map());
+  const [previewZoom, setPreviewZoom] = useState(0.78);
+  const [dragState, setDragState] = useState(null);
+  const [logoLibrary, setLogoLibrary] = useState(BUILT_IN_LOGOS);
   const canvasRef = useRef(null);
   const stageRef = useRef(null);
+  const imageCacheRef = useRef(new Map());
   const stageSize = useElementSize(stageRef);
-  const lastTickRef = useRef(0);
 
   const preset = CANVAS_PRESETS.find((item) => item.id === scene.presetId) ?? CANVAS_PRESETS[0];
-  const activeLayer = scene.layers.find((layer) => layer.id === activeLayerId) ?? scene.layers[0] ?? null;
+  const activeLayer = scene.layers.find((layer) => layer.id === activeLayerId) ?? null;
+
+  const applyColorPreset = (scheme) => {
+    setScene((current) => {
+      let shapeIndex = 0;
+      return {
+        ...current,
+        background: {
+          ...current.background,
+          colorA: scheme.background,
+          colorB: scheme.secondary,
+        },
+        layers: current.layers.map((layer) => {
+          if (layer.kind === 'shape') {
+            const fill = shapeIndex === 0 ? scheme.secondary : scheme.accent;
+            shapeIndex += 1;
+            return {
+              ...layer,
+              shape: {
+                ...layer.shape,
+                fill,
+              },
+            };
+          }
+          if (layer.kind === 'text') {
+            const nextColor =
+              layer.role === 'headline' || layer.role === 'caption'
+                ? scheme.accent
+                : layer.role === 'body'
+                  ? scheme.contrast
+                  : scheme.contrast;
+            return {
+              ...layer,
+              text: {
+                ...layer.text,
+                color: nextColor,
+              },
+            };
+          }
+          if (layer.kind === 'logo') {
+            return {
+              ...layer,
+              logo: {
+                ...layer.logo,
+                tint: scheme.accent,
+              },
+            };
+          }
+          if (layer.kind === 'image') {
+            return {
+              ...layer,
+              image: {
+                ...layer.image,
+                tint: scheme.accent,
+              },
+            };
+          }
+          return layer;
+        }),
+      };
+    });
+  };
 
   const getImage = (src) => {
     if (!src) {
       return null;
     }
+
     const cached = imageCacheRef.current.get(src);
     if (cached?.status === 'loaded') {
       return cached.image;
@@ -167,25 +250,32 @@ const App = () => {
     if (cached?.status === 'loading') {
       return null;
     }
+
     const image = new Image();
     image.onload = () => {
       imageCacheRef.current.set(src, { status: 'loaded', image });
-      setAssetVersion((version) => version + 1);
+      setAssetVersion((value) => value + 1);
     };
-    image.onerror = () => imageCacheRef.current.set(src, { status: 'error', image: null });
+    image.onerror = () => {
+      imageCacheRef.current.set(src, { status: 'error', image: null });
+      setAssetVersion((value) => value + 1);
+    };
     image.src = src;
     imageCacheRef.current.set(src, { status: 'loading', image: null });
     return null;
   };
 
+  useEffect(() => {
+    document.fonts?.ready.then(() => setAssetVersion((value) => value + 1));
+  }, []);
+
   const previewScale = useMemo(() => {
     if (!stageSize.width || !stageSize.height) {
-      return 0.3 * previewZoom;
+      return previewZoom;
     }
-    const margin = 96;
     return Math.min(
-      (stageSize.width - margin) / preset.width,
-      (stageSize.height - 160) / preset.height,
+      (stageSize.width - 96) / preset.width,
+      (stageSize.height - 120) / preset.height,
       1,
     ) * previewZoom;
   }, [preset.height, preset.width, previewZoom, stageSize.height, stageSize.width]);
@@ -206,75 +296,35 @@ const App = () => {
     }));
   };
 
-  const moveLayer = (layerId, direction) => {
+  const addShapeLayer = () => {
     setScene((current) => {
-      const index = current.layers.findIndex((layer) => layer.id === layerId);
-      if (index < 0) {
-        return current;
-      }
-      const nextIndex = clamp(index + direction, 0, current.layers.length - 1);
-      if (nextIndex === index) {
-        return current;
-      }
-      const layers = [...current.layers];
-      const [item] = layers.splice(index, 1);
-      layers.splice(nextIndex, 0, item);
-      return { ...current, layers };
-    });
-  };
-
-  const addLayer = (kind) => {
-    const maker =
-      kind === 'shape'
-        ? createShapeLayer
-        : kind === 'text'
-          ? createTextLayer
-          : kind === 'logo'
-            ? createLogoLayer
-            : createImageLayer;
-    setScene((current) => {
-      const layer = maker(current.layers.filter((item) => item.kind === kind).length + 1);
+      const layer = createShapeLayer(current.layers.filter((item) => item.kind === 'shape').length + 1);
       setActiveLayerId(layer.id);
       return { ...current, layers: [...current.layers, layer] };
     });
   };
 
-  const applyLogoPresetToLayer = (layerId, entry) => {
-    replaceLayer(layerId, (layer) => {
-      if (layer.kind !== 'logo') {
-        return layer;
-      }
-      return {
-        ...layer,
-        assetSrc: entry.src,
-        assetName: entry.name,
-        logo: {
-          ...layer.logo,
-          ...(entry.defaults ?? {}),
-        },
-      };
+  const addTextLayer = (role = 'body') => {
+    setScene((current) => {
+      const layer = createTextLayer(current.layers.filter((item) => item.kind === 'text').length + 1, role);
+      setActiveLayerId(layer.id);
+      return { ...current, layers: [...current.layers, layer] };
     });
   };
 
-  const applyLogoEntry = (entry) => {
-    if (activeLayer?.kind === 'logo') {
-      applyLogoPresetToLayer(activeLayer.id, entry);
-      return;
-    }
-
+  const addLogoLayer = () => {
     setScene((current) => {
-      const freshLayer = createLogoLayer(current.layers.filter((item) => item.kind === 'logo').length + 1);
-      const nextLayer = {
-        ...freshLayer,
-        assetSrc: entry.src,
-        assetName: entry.name,
-        logo: {
-          ...freshLayer.logo,
-          ...(entry.defaults ?? {}),
-        },
-      };
-      setActiveLayerId(nextLayer.id);
-      return { ...current, layers: [...current.layers, nextLayer] };
+      const layer = createLogoLayer(current.layers.filter((item) => item.kind === 'logo').length + 1);
+      setActiveLayerId(layer.id);
+      return { ...current, layers: [...current.layers, layer] };
+    });
+  };
+
+  const addImageLayer = () => {
+    setScene((current) => {
+      const layer = createImageLayer(current.layers.filter((item) => item.kind === 'image').length + 1);
+      setActiveLayerId(layer.id);
+      return { ...current, layers: [...current.layers, layer] };
     });
   };
 
@@ -296,36 +346,87 @@ const App = () => {
 
   const deleteLayer = (layerId) => {
     setScene((current) => {
-      const remaining = current.layers.filter((layer) => layer.id !== layerId);
-      const nextActive = remaining[Math.max(0, remaining.length - 1)]?.id ?? null;
-      setActiveLayerId(nextActive);
-      return { ...current, layers: remaining };
+      const layers = current.layers.filter((layer) => layer.id !== layerId);
+      setActiveLayerId(layers[layers.length - 1]?.id ?? null);
+      return { ...current, layers };
     });
   };
 
-  const randomizeActiveLayer = () => {
-    if (!activeLayer) {
+  const moveLayer = (layerId, direction) => {
+    setScene((current) => {
+      const index = current.layers.findIndex((layer) => layer.id === layerId);
+      if (index < 0) {
+        return current;
+      }
+      const targetIndex = clamp(index + direction, 0, current.layers.length - 1);
+      if (targetIndex === index) {
+        return current;
+      }
+      const layers = [...current.layers];
+      const [item] = layers.splice(index, 1);
+      layers.splice(targetIndex, 0, item);
+      return { ...current, layers };
+    });
+  };
+
+  const randomizeShapes = () => {
+    setScene((current) => ({
+      ...current,
+      layers: current.layers.map((layer) => {
+        if (layer.kind !== 'shape') {
+          return layer;
+        }
+        return {
+          ...layer,
+          transform: {
+            ...layer.transform,
+            rotation: Math.round(Math.random() * 30 - 15),
+          },
+          shape: {
+            ...layer.shape,
+            seed: Math.floor(Math.random() * 100000),
+            roughness: Number((0.16 + Math.random() * 0.34).toFixed(2)),
+            asymmetry: Number((0.08 + Math.random() * 0.26).toFixed(2)),
+            wobble: Number((0.06 + Math.random() * 0.22).toFixed(2)),
+            bites: Math.floor(1 + Math.random() * 4),
+            biteSize: Number((0.06 + Math.random() * 0.13).toFixed(2)),
+            squishX: Number((0.8 + Math.random() * 0.45).toFixed(2)),
+            squishY: Number((0.8 + Math.random() * 0.45).toFixed(2)),
+            points: Math.floor(9 + Math.random() * 10),
+          },
+        };
+      }),
+    }));
+  };
+
+  const applyLogoEntry = (entry) => {
+    if (activeLayer?.kind === 'logo') {
+      replaceLayer(activeLayer.id, (layer) => ({
+        ...layer,
+        assetSrc: entry.src,
+        assetName: entry.name,
+        logo: {
+          ...layer.logo,
+          ...(entry.defaults ?? {}),
+        },
+        transform: {
+          ...layer.transform,
+          x: entry.defaults?.x ?? layer.transform.x,
+          y: entry.defaults?.y ?? layer.transform.y,
+        },
+      }));
       return;
     }
-    replaceLayer(activeLayer.id, (layer) => ({
-      ...layer,
-      transform: {
-        ...layer.transform,
-        rotation: Math.round(Math.random() * 25 - 12),
-      },
-      motion: {
-        ...layer.motion,
-        x: { ...layer.motion.x, amp: Number((Math.random() * 0.08).toFixed(3)), freq: Number((0.04 + Math.random() * 0.3).toFixed(2)) },
-        y: { ...layer.motion.y, amp: Number((Math.random() * 0.08).toFixed(3)), freq: Number((0.04 + Math.random() * 0.25).toFixed(2)) },
-        scale: { ...layer.motion.scale, amp: Number((0.02 + Math.random() * 0.18).toFixed(3)), freq: Number((0.06 + Math.random() * 0.28).toFixed(2)) },
-        rotation: { ...layer.motion.rotation, amp: Number((2 + Math.random() * 32).toFixed(1)), freq: Number((0.02 + Math.random() * 0.18).toFixed(2)) },
-      },
-      fx: {
-        ...layer.fx,
-        glitch: Number((Math.random() * 0.35).toFixed(2)),
-        jitter: Number((Math.random() * 0.02).toFixed(3)),
-      },
-    }));
+
+    setScene((current) => {
+      const layer = createLogoLayer(current.layers.filter((item) => item.kind === 'logo').length + 1, {
+        assetSrc: entry.src,
+        assetName: entry.name,
+        ...(entry.defaults ?? {}),
+      });
+      setActiveLayerId(layer.id);
+      return { ...current, layers: [...current.layers, layer] };
+    });
   };
 
   const handleAssetUpload = (event, callback) => {
@@ -338,90 +439,39 @@ const App = () => {
     event.target.value = '';
   };
 
-  const exportFrame = (type) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = preset.width;
-    canvas.height = preset.height;
-    const ctx = canvas.getContext('2d');
+  const exportPng = () => {
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = preset.width;
+    exportCanvas.height = preset.height;
+    const ctx = exportCanvas.getContext('2d');
     renderScene({
       ctx,
       width: preset.width,
       height: preset.height,
       scene,
-      time: scene.playback.time,
       getImage,
     });
     const link = document.createElement('a');
-    link.download = `instagram-motion-frame-${Date.now()}.${type === 'jpeg' ? 'jpg' : 'png'}`;
-    link.href = canvas.toDataURL(type === 'jpeg' ? 'image/jpeg' : 'image/png', 0.95);
+    link.download = `digilab-news-${Date.now()}.png`;
+    link.href = exportCanvas.toDataURL('image/png');
     link.click();
   };
 
-  const exportSceneJson = () => {
-    const blob = new Blob([JSON.stringify(scene, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.download = `instagram-motion-scene-${Date.now()}.json`;
-    link.href = url;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  useEffect(() => {
-    if (!scene.playback.playing) {
-      lastTickRef.current = 0;
-      return undefined;
-    }
-
-    let frameId = 0;
-    const frameDuration = 1000 / Math.max(1, scene.playback.fps);
-
-    const tick = (timestamp) => {
-      if (!lastTickRef.current) {
-        lastTickRef.current = timestamp;
-      }
-      const delta = timestamp - lastTickRef.current;
-      if (delta >= frameDuration) {
-        setScene((current) => {
-          const nextTime = current.playback.time + (delta / 1000) * current.playback.rate;
-          const duration = current.playback.duration;
-          const wrapped = current.playback.loop ? nextTime % duration : Math.min(duration, nextTime);
-          const shouldStop = !current.playback.loop && nextTime >= duration;
-          return {
-            ...current,
-            playback: {
-              ...current.playback,
-              time: wrapped,
-              playing: shouldStop ? false : current.playback.playing,
-            },
-          };
-        });
-        lastTickRef.current = timestamp;
-      }
-      frameId = window.requestAnimationFrame(tick);
-    };
-
-    frameId = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frameId);
-  }, [scene.playback.fps, scene.playback.loop, scene.playback.playing, scene.playback.rate]);
-
-  useEffect(() => {
-    setScene((current) => ({
-      ...current,
-      playback: {
-        ...current.playback,
-        time: Math.min(current.playback.time, current.playback.duration),
-      },
-      layers: current.layers.map((layer) => ({
-        ...layer,
-        timeline: {
-          ...layer.timeline,
-          inPoint: Math.min(layer.timeline.inPoint, Math.max(0, current.playback.duration - 0.1)),
-          outPoint: Math.min(Math.max(layer.timeline.outPoint, layer.timeline.inPoint + 0.1), current.playback.duration),
-        },
-      })),
-    }));
-  }, [scene.playback.duration]);
+  const layerBounds = useMemo(
+    () =>
+      scene.layers
+        .map((layer) => ({
+          layerId: layer.id,
+          bounds: measureLayerBounds({
+            layer,
+            width: preset.width,
+            height: preset.height,
+            getImage,
+          }),
+        }))
+        .filter((entry) => entry.bounds),
+    [assetVersion, preset.height, preset.width, scene],
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -434,25 +484,93 @@ const App = () => {
       width: preset.width,
       height: preset.height,
       scene,
-      time: scene.playback.time,
       getImage,
     });
   }, [assetVersion, preset.height, preset.width, scene]);
+
+  const getCanvasPoint = (event) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return null;
+    }
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * preset.width,
+      y: ((event.clientY - rect.top) / rect.height) * preset.height,
+    };
+  };
+
+  const handlePointerDown = (event) => {
+    const point = getCanvasPoint(event);
+    if (!point) {
+      return;
+    }
+
+    const hit = [...layerBounds].reverse().find(({ bounds }) => (
+      point.x >= bounds.x &&
+      point.x <= bounds.x + bounds.width &&
+      point.y >= bounds.y &&
+      point.y <= bounds.y + bounds.height
+    ));
+
+    if (!hit) {
+      return;
+    }
+
+    const layer = scene.layers.find((entry) => entry.id === hit.layerId);
+    if (!layer) {
+      return;
+    }
+
+    setActiveLayerId(layer.id);
+    setDragState({
+      layerId: layer.id,
+      pointerX: point.x,
+      pointerY: point.y,
+      startX: layer.transform.x,
+      startY: layer.transform.y,
+    });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePointerMove = (event) => {
+    if (!dragState) {
+      return;
+    }
+
+    const point = getCanvasPoint(event);
+    if (!point) {
+      return;
+    }
+
+    const deltaX = (point.x - dragState.pointerX) / preset.width;
+    const deltaY = (point.y - dragState.pointerY) / preset.height;
+
+    updateLayer(dragState.layerId, 'transform.x', clamp(dragState.startX + deltaX, 0, 1));
+    updateLayer(dragState.layerId, 'transform.y', clamp(dragState.startY + deltaY, 0, 1));
+  };
+
+  const handlePointerUp = (event) => {
+    if (!dragState) {
+      return;
+    }
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    setDragState(null);
+  };
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar__header">
           <div>
-            <div className="eyebrow">Touch Style Motion Lab</div>
-            <h1>Instagram Motion Engine</h1>
+            <div className="eyebrow">Static Instagram News Builder</div>
+            <h1>digilab.ai News Studio</h1>
           </div>
           <button
             className="ghost-button"
             onClick={() => {
               const freshScene = createInitialScene();
               setScene(freshScene);
-              setActiveLayerId(freshScene.layers[0]?.id ?? null);
+              setActiveLayerId(freshScene.layers[freshScene.layers.length - 1]?.id ?? null);
             }}
           >
             <RotateCcw size={16} />
@@ -460,471 +578,420 @@ const App = () => {
           </button>
         </div>
 
-        <Section title="Composition & Timeline" icon={Activity}>
+        <Section title="Format & Export" icon={Download}>
           <SelectField
-            label="Format"
+            label="Canvas"
             value={scene.presetId}
             options={CANVAS_PRESETS.map((item) => ({ value: item.id, label: `${item.label} (${item.width}x${item.height})` }))}
             onChange={(value) => updateScene('presetId', value)}
           />
-          <div className="field-grid">
-            <SliderField label="Dauer" value={scene.playback.duration} min={2} max={20} step={0.5} format={(value) => `${value.toFixed(1)}s`} onChange={(value) => updateScene('playback.duration', value)} />
-            <SliderField label="FPS" value={scene.playback.fps} min={12} max={60} step={1} format={(value) => `${value}`} onChange={(value) => updateScene('playback.fps', value)} />
-          </div>
-          <div className="field-grid">
-            <SliderField label="Tempo" value={scene.playback.rate} min={0.2} max={3} step={0.05} format={(value) => `${value.toFixed(2)}x`} onChange={(value) => updateScene('playback.rate', value)} />
-            <label className="toggle">
-              <span>Loop</span>
-              <input type="checkbox" checked={scene.playback.loop} onChange={(event) => updateScene('playback.loop', event.target.checked)} />
-            </label>
-          </div>
           <SliderField
-            label="Playhead"
-            value={scene.playback.time}
-            min={0}
-            max={scene.playback.duration}
+            label="Preview Zoom"
+            value={previewZoom}
+            min={0.45}
+            max={1}
             step={0.01}
-            format={(value) => `${value.toFixed(2)}s`}
-            onChange={(value) => updateScene('playback.time', value)}
+            format={(value) => `${Math.round(value * 100)}%`}
+            onChange={setPreviewZoom}
           />
+          <div className="button-row">
+            <button className="ghost-button" type="button" onClick={randomizeShapes}>
+              <Shapes size={16} />
+              Shapes variieren
+            </button>
+            <button className="accent-button" type="button" onClick={exportPng}>
+              <Download size={16} />
+              PNG exportieren
+            </button>
+          </div>
         </Section>
 
-        <Section title="Background & Global FX" icon={Sparkles}>
+        <Section title="Background & CI" icon={Palette}>
           <div className="mode-row">
             {[
-              { value: 'gradient', label: 'Gradient' },
               { value: 'solid', label: 'Solid' },
+              { value: 'gradient', label: 'Gradient' },
               { value: 'image', label: 'Image' },
-            ].map((mode) => (
+            ].map((item) => (
               <button
-                key={mode.value}
+                key={item.value}
                 type="button"
-                className={`mode-chip ${scene.background.mode === mode.value ? 'is-active' : ''}`}
-                onClick={() => updateScene('background.mode', mode.value)}
+                className={`mode-chip ${scene.background.mode === item.value ? 'is-active' : ''}`}
+                onClick={() => updateScene('background.mode', item.value)}
               >
-                {mode.label}
+                {item.label}
               </button>
             ))}
           </div>
           <div className="field-grid">
-            <ColorField label="Color A" value={scene.background.colorA} onChange={(value) => updateScene('background.colorA', value)} />
-            <ColorField label="Color B" value={scene.background.colorB} onChange={(value) => updateScene('background.colorB', value)} />
+            <ColorField label="Farbe A" value={scene.background.colorA} onChange={(value) => updateScene('background.colorA', value)} />
+            <ColorField label="Farbe B" value={scene.background.colorB} onChange={(value) => updateScene('background.colorB', value)} />
           </div>
-          <div className="field-grid">
-            <ColorField label="Color C" value={scene.background.colorC} onChange={(value) => updateScene('background.colorC', value)} />
-            <SliderField label="Angle" value={scene.background.angle} min={0} max={360} step={1} format={(value) => `${Math.round(value)}°`} onChange={(value) => updateScene('background.angle', value)} />
+          <div className="field">
+            <div className="field__head">
+              <span>CI Presets</span>
+              <span>Ein Klick</span>
+            </div>
+            <div className="button-row">
+              {COLOR_PRESETS.map((scheme) => (
+                <button key={scheme.id} type="button" className="ghost-button" onClick={() => applyColorPreset(scheme)}>
+                  {scheme.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="background-preview" style={{ background: `linear-gradient(${scene.background.angle}deg, ${scene.background.colorA} 0%, ${scene.background.colorB} 55%, ${scene.background.colorC} 100%)` }} />
-          <UploadButton
-            label={scene.background.imageSrc ? 'Background austauschen' : 'Background laden'}
-            accept="image/*"
-            onSelect={(event) =>
-              handleAssetUpload(event, ({ src }) => {
-                updateScene('background.imageSrc', src);
-                updateScene('background.mode', 'image');
-              })
-            }
-          />
-          {scene.background.imageSrc && <div className="asset-note">Image-Background geladen</div>}
-          <SliderField label="Vignette" value={scene.background.vignette} min={0} max={0.7} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateScene('background.vignette', value)} />
-          <div className="field-grid">
-            <SliderField label="Scanlines" value={scene.globalFx.scanlines} min={0} max={0.6} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateScene('globalFx.scanlines', value)} />
-            <SliderField label="Noise" value={scene.globalFx.noise} min={0} max={0.4} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateScene('globalFx.noise', value)} />
-          </div>
-          <div className="field-grid">
-            <SliderField label="Displace" value={scene.globalFx.displacement} min={0} max={0.5} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateScene('globalFx.displacement', value)} />
-            <SliderField label="Chromatic" value={scene.globalFx.chromatic} min={0} max={0.5} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateScene('globalFx.chromatic', value)} />
-          </div>
-          <SliderField label="Ghost" value={scene.globalFx.ghost} min={0} max={0.5} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateScene('globalFx.ghost', value)} />
-        </Section>
-
-        <Section title="Logo Library" icon={ImagePlus}>
-          <div className="library-grid">
-            {logoLibrary.map((logo) => (
-              <button
-                key={logo.id}
-                className={`library-card ${activeLayer?.assetSrc === logo.src ? 'is-active' : ''}`}
-                onClick={() => applyLogoEntry(logo)}
-              >
-                <img src={logo.src} alt={logo.name} />
-                <span>{logo.name}</span>
-              </button>
-            ))}
-          </div>
-          <UploadButton
-            label="Weiteres Logo einbauen"
-            accept="image/*,.svg"
-            onSelect={(event) =>
-              handleAssetUpload(event, ({ file, src }) => {
-                const entry = {
-                  id: `logo_${Math.random().toString(36).slice(2, 9)}`,
-                  name: file.name.replace(/\.[^.]+$/, ''),
-                  src,
-                  defaults: {
-                    preserveColor: false,
-                    tint: '#ffffff',
-                    removeWhite: true,
-                    whiteThreshold: 238,
-                    size: 0.2,
-                    stretchX: 1,
-                    stretchY: 1,
-                  },
-                };
-                setLogoLibrary((current) => [...current, entry]);
-                applyLogoEntry(entry);
-              })
-            }
+          {scene.background.mode === 'gradient' && (
+            <SliderField
+              label="Gradient Winkel"
+              value={scene.background.angle}
+              min={0}
+              max={360}
+              step={1}
+              format={(value) => `${Math.round(value)}°`}
+              onChange={(value) => updateScene('background.angle', value)}
+            />
+          )}
+          {scene.background.mode === 'image' && (
+            <UploadButton
+              label={scene.background.imageSrc ? 'Background ersetzen' : 'Background hochladen'}
+              accept="image/*"
+              onSelect={(event) => handleAssetUpload(event, ({ src }) => updateScene('background.imageSrc', src))}
+            />
+          )}
+          <PaletteSwatches
+            onPick={(color) => {
+              updateScene('background.colorA', color);
+              if (scene.background.mode === 'gradient') {
+                updateScene('background.colorB', '#050505');
+              }
+            }}
           />
         </Section>
 
         <Section title="Layer Stack" icon={Layers}>
           <div className="button-row">
-            <button className="accent-button" onClick={() => addLayer('shape')}>
-              <Plus size={15} />
+            <button className="ghost-button" type="button" onClick={addShapeLayer}>
+              <Plus size={16} />
               Shape
             </button>
-            <button className="accent-button" onClick={() => addLayer('text')}>
-              <Plus size={15} />
-              Text
-            </button>
-            <button className="accent-button" onClick={() => addLayer('logo')}>
-              <Plus size={15} />
+            <button className="ghost-button" type="button" onClick={addLogoLayer}>
+              <Plus size={16} />
               Logo
             </button>
-            <button className="accent-button" onClick={() => addLayer('image')}>
-              <Plus size={15} />
-              Image
+            <button className="ghost-button" type="button" onClick={() => addTextLayer('headline')}>
+              <Type size={16} />
+              Headline
+            </button>
+            <button className="ghost-button" type="button" onClick={() => addTextLayer('body')}>
+              <Type size={16} />
+              Textblock
+            </button>
+            <button className="ghost-button" type="button" onClick={addImageLayer}>
+              <ImagePlus size={16} />
+              Bild-Layer
             </button>
           </div>
-
           <div className="layer-list">
-            {scene.layers.map((layer, index) => (
-              <button
+            {[...scene.layers].reverse().map((layer) => (
+              <div
                 key={layer.id}
-                className={`layer-item ${activeLayerId === layer.id ? 'is-active' : ''}`}
-                onClick={() => setActiveLayerId(layer.id)}
+                className={`layer-row ${activeLayerId === layer.id ? 'is-active' : ''}`}
               >
-                <div className="layer-item__meta">
-                  <span className="layer-kind">{layer.kind}</span>
-                  <strong>{layer.name}</strong>
-                  <small>Stack {index + 1}</small>
-                </div>
-                <div className="layer-item__actions">
-                  <span
-                    className="icon-button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      updateLayer(layer.id, 'visible', !layer.visible);
-                    }}
-                  >
-                    {layer.visible ? <Eye size={15} /> : <EyeOff size={15} />}
-                  </span>
-                </div>
-              </button>
+                <button
+                  type="button"
+                  className="layer-row__select"
+                  onClick={() => setActiveLayerId(layer.id)}
+                >
+                  <div className="layer-row__main">
+                    <span>{layer.name}</span>
+                    <small>{layer.kind}</small>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => updateLayer(layer.id, 'visible', !layer.visible)}
+                >
+                  {layer.visible ? <Eye size={15} /> : <EyeOff size={15} />}
+                </button>
+              </div>
             ))}
           </div>
         </Section>
 
         {activeLayer && (
-          <>
-            <Section title={`Active Layer: ${activeLayer.name}`} icon={SlidersHorizontal}>
+          <Section title={`Aktiver Layer: ${activeLayer.name}`} icon={activeLayer.kind === 'text' ? Type : activeLayer.kind === 'shape' ? Shapes : activeLayer.kind === 'image' ? ImagePlus : Layers}>
+            <div className="field">
+              <div className="field__head">
+                <span>Layer Tools</span>
+              </div>
               <div className="button-row">
-                <button className="ghost-button" onClick={() => moveLayer(activeLayer.id, 1)}>Vor</button>
-                <button className="ghost-button" onClick={() => moveLayer(activeLayer.id, -1)}>Zurueck</button>
-                <button className="ghost-button" onClick={() => duplicateLayer(activeLayer.id)}>
-                  <Copy size={14} />
+                <button className="ghost-button" type="button" onClick={() => moveLayer(activeLayer.id, 1)}>
+                  <ArrowDown size={16} />
+                  Runter
+                </button>
+                <button className="ghost-button" type="button" onClick={() => moveLayer(activeLayer.id, -1)}>
+                  <ArrowUp size={16} />
+                  Hoch
+                </button>
+                <button className="ghost-button" type="button" onClick={() => duplicateLayer(activeLayer.id)}>
+                  <Copy size={16} />
                   Duplizieren
                 </button>
-                <button className="ghost-button danger" onClick={() => deleteLayer(activeLayer.id)}>Loeschen</button>
-              </div>
-              <div className="field-grid">
-                <SliderField label="X" value={activeLayer.transform.x} min={0} max={1} step={0.001} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'transform.x', value)} />
-                <SliderField label="Y" value={activeLayer.transform.y} min={0} max={1} step={0.001} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'transform.y', value)} />
-              </div>
-              <div className="field-grid">
-                <SliderField label="Scale" value={activeLayer.transform.scale} min={0.2} max={2.5} step={0.01} format={(value) => `${value.toFixed(2)}x`} onChange={(value) => updateLayer(activeLayer.id, 'transform.scale', value)} />
-                <SliderField label="Rotation" value={activeLayer.transform.rotation} min={-180} max={180} step={1} format={(value) => `${Math.round(value)}°`} onChange={(value) => updateLayer(activeLayer.id, 'transform.rotation', value)} />
-              </div>
-              <div className="field-grid">
-                <SliderField label="Opacity" value={activeLayer.opacity} min={0} max={1} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'opacity', value)} />
-                <SliderField label="Blur" value={activeLayer.blur} min={0} max={24} step={0.5} format={(value) => `${value.toFixed(1)}px`} onChange={(value) => updateLayer(activeLayer.id, 'blur', value)} />
-              </div>
-              <SelectField label="Blend" value={activeLayer.blendMode} options={BLEND_MODES} onChange={(value) => updateLayer(activeLayer.id, 'blendMode', value)} />
-            </Section>
-
-            <Section title="Layer Timeline" icon={Activity}>
-              <div className="field-grid">
-                <SliderField label="In" value={activeLayer.timeline.inPoint} min={0} max={scene.playback.duration - 0.1} step={0.05} format={(value) => `${value.toFixed(2)}s`} onChange={(value) => updateLayer(activeLayer.id, 'timeline.inPoint', value)} />
-                <SliderField label="Out" value={activeLayer.timeline.outPoint} min={0.1} max={scene.playback.duration} step={0.05} format={(value) => `${value.toFixed(2)}s`} onChange={(value) => updateLayer(activeLayer.id, 'timeline.outPoint', value)} />
-              </div>
-              <div className="field-grid">
-                <SliderField label="Fade In" value={activeLayer.timeline.fadeIn} min={0} max={3} step={0.05} format={(value) => `${value.toFixed(2)}s`} onChange={(value) => updateLayer(activeLayer.id, 'timeline.fadeIn', value)} />
-                <SliderField label="Fade Out" value={activeLayer.timeline.fadeOut} min={0} max={3} step={0.05} format={(value) => `${value.toFixed(2)}s`} onChange={(value) => updateLayer(activeLayer.id, 'timeline.fadeOut', value)} />
-              </div>
-              <div className="field-grid">
-                <SliderField label="Speed" value={activeLayer.timeline.speed} min={0.2} max={3} step={0.05} format={(value) => `${value.toFixed(2)}x`} onChange={(value) => updateLayer(activeLayer.id, 'timeline.speed', value)} />
-                <SelectField label="Loop Mode" value={activeLayer.timeline.loopMode} options={LOOP_OPTIONS} onChange={(value) => updateLayer(activeLayer.id, 'timeline.loopMode', value)} />
-              </div>
-            </Section>
-
-            <Section title="Motion Modulators" icon={Wand2}>
-              <div className="button-row">
-                <button className="ghost-button" onClick={randomizeActiveLayer}>
-                  <Sparkles size={14} />
-                  Randomize
+                <button className="ghost-button danger" type="button" onClick={() => deleteLayer(activeLayer.id)}>
+                  <Trash2 size={16} />
+                  Löschen
                 </button>
               </div>
-              {['x', 'y', 'scale', 'rotation', 'opacity'].map((channel) => (
-                <div key={channel} className="mod-card">
-                  <div className="mod-card__title">{channel.toUpperCase()}</div>
-                  <div className="field-grid">
-                    <SelectField label="Wave" value={activeLayer.motion[channel].wave} options={WAVE_OPTIONS} onChange={(value) => updateLayer(activeLayer.id, `motion.${channel}.wave`, value)} />
-                    <SliderField label="Amp" value={activeLayer.motion[channel].amp} min={channel === 'rotation' ? 0 : 0} max={channel === 'rotation' ? 60 : channel === 'opacity' ? 0.5 : 0.25} step={channel === 'rotation' ? 0.5 : 0.005} format={(value) => channel === 'rotation' ? `${value.toFixed(1)}°` : `${value.toFixed(3)}`} onChange={(value) => updateLayer(activeLayer.id, `motion.${channel}.amp`, value)} />
-                  </div>
-                  <div className="field-grid">
-                    <SliderField label="Freq" value={activeLayer.motion[channel].freq} min={0.01} max={2} step={0.01} format={(value) => `${value.toFixed(2)}hz`} onChange={(value) => updateLayer(activeLayer.id, `motion.${channel}.freq`, value)} />
-                    <SliderField label="Phase" value={activeLayer.motion[channel].phase} min={0} max={1} step={0.01} format={(value) => value.toFixed(2)} onChange={(value) => updateLayer(activeLayer.id, `motion.${channel}.phase`, value)} />
-                  </div>
-                  <SliderField label="Noise" value={activeLayer.motion[channel].noise} min={0} max={channel === 'rotation' ? 12 : 0.08} step={channel === 'rotation' ? 0.1 : 0.002} format={(value) => channel === 'rotation' ? `${value.toFixed(1)}°` : value.toFixed(3)} onChange={(value) => updateLayer(activeLayer.id, `motion.${channel}.noise`, value)} />
-                </div>
-              ))}
-              <div className="field-grid">
-                <SliderField label="Jitter" value={activeLayer.fx.jitter} min={0} max={0.03} step={0.001} format={(value) => value.toFixed(3)} onChange={(value) => updateLayer(activeLayer.id, 'fx.jitter', value)} />
-                <SliderField label="Glitch" value={activeLayer.fx.glitch} min={0} max={0.5} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'fx.glitch', value)} />
-              </div>
-            </Section>
+            </div>
+
+            <div className="field-grid">
+              <SliderField label="X" value={activeLayer.transform.x} min={0} max={1} step={0.001} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'transform.x', value)} />
+              <SliderField label="Y" value={activeLayer.transform.y} min={0} max={1} step={0.001} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'transform.y', value)} />
+            </div>
+
+            <div className="field-grid">
+              <SliderField label="Rotation" value={activeLayer.transform.rotation} min={-180} max={180} step={1} format={(value) => `${Math.round(value)}°`} onChange={(value) => updateLayer(activeLayer.id, 'transform.rotation', value)} />
+              <SliderField label="Opacity" value={activeLayer.opacity} min={0} max={1} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'opacity', value)} />
+            </div>
+
+            <div className="field-grid">
+              <SliderField label="Scale" value={activeLayer.transform.scale} min={0.3} max={2} step={0.01} format={(value) => `${value.toFixed(2)}x`} onChange={(value) => updateLayer(activeLayer.id, 'transform.scale', value)} />
+              <SliderField label="Blur" value={activeLayer.blur} min={0} max={24} step={0.5} format={(value) => `${value.toFixed(1)}px`} onChange={(value) => updateLayer(activeLayer.id, 'blur', value)} />
+            </div>
+
+            <SelectField
+              label="Blend Mode"
+              value={activeLayer.blendMode}
+              options={BLEND_MODES}
+              onChange={(value) => updateLayer(activeLayer.id, 'blendMode', value)}
+            />
 
             {activeLayer.kind === 'shape' && (
-              <Section title="Shape Settings" icon={Layers}>
-                <div className="field-grid">
-                  <SelectField label="Preset" value={activeLayer.shape.preset} options={SHAPE_PRESETS} onChange={(value) => updateLayer(activeLayer.id, 'shape.preset', value)} />
-                  <SelectField label="Arrangement" value={activeLayer.shape.arrangement} options={ARRANGEMENTS} onChange={(value) => updateLayer(activeLayer.id, 'shape.arrangement', value)} />
-                </div>
+              <>
                 <div className="field-grid">
                   <ColorField label="Fill" value={activeLayer.shape.fill} onChange={(value) => updateLayer(activeLayer.id, 'shape.fill', value)} />
-                  <ColorField label="Stroke" value={activeLayer.shape.stroke} onChange={(value) => updateLayer(activeLayer.id, 'shape.stroke', value)} />
+                  <SliderField label="Size" value={activeLayer.shape.size} min={0.08} max={0.9} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'shape.size', value)} />
+                </div>
+                <PaletteSwatches onPick={(color) => updateLayer(activeLayer.id, 'shape.fill', color)} />
+                <div className="field-grid">
+                  <SliderField label="Pixel" value={activeLayer.shape.pixelSize} min={12} max={84} step={1} format={(value) => `${Math.round(value)}`} onChange={(value) => updateLayer(activeLayer.id, 'shape.pixelSize', value)} />
+                  <SliderField label="Punkte" value={activeLayer.shape.points} min={6} max={24} step={1} format={(value) => `${Math.round(value)}`} onChange={(value) => updateLayer(activeLayer.id, 'shape.points', value)} />
                 </div>
                 <div className="field-grid">
-                  <SliderField label="Instances" value={activeLayer.shape.instances} min={1} max={16} step={1} format={(value) => `${value}`} onChange={(value) => updateLayer(activeLayer.id, 'shape.instances', value)} />
-                  <SliderField label="Size" value={activeLayer.shape.size} min={0.05} max={0.5} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'shape.size', value)} />
+                  <SliderField label="Roughness" value={activeLayer.shape.roughness} min={0} max={0.7} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'shape.roughness', value)} />
+                  <SliderField label="Asymmetry" value={activeLayer.shape.asymmetry} min={0} max={0.5} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'shape.asymmetry', value)} />
                 </div>
                 <div className="field-grid">
-                  <SliderField label="Spread" value={activeLayer.shape.spread} min={0} max={0.8} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'shape.spread', value)} />
-                  <SliderField label="Distortion" value={activeLayer.shape.distortion} min={0} max={1} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'shape.distortion', value)} />
+                  <SliderField label="Wobble" value={activeLayer.shape.wobble} min={0} max={0.4} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'shape.wobble', value)} />
+                  <SliderField label="Bites" value={activeLayer.shape.bites} min={0} max={5} step={1} format={(value) => `${Math.round(value)}`} onChange={(value) => updateLayer(activeLayer.id, 'shape.bites', value)} />
                 </div>
-                <SliderField label="Stroke Width" value={activeLayer.shape.lineWidth} min={0} max={12} step={0.5} format={(value) => `${value.toFixed(1)}px`} onChange={(value) => updateLayer(activeLayer.id, 'shape.lineWidth', value)} />
-              </Section>
+                <div className="field-grid">
+                  <SliderField label="Stretch X" value={activeLayer.shape.squishX} min={0.6} max={1.4} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'shape.squishX', value)} />
+                  <SliderField label="Stretch Y" value={activeLayer.shape.squishY} min={0.6} max={1.4} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'shape.squishY', value)} />
+                </div>
+                <div className="button-row">
+                  <button className="ghost-button" type="button" onClick={randomizeShapes}>
+                    <RotateCcw size={16} />
+                    Nur Formen neu
+                  </button>
+                </div>
+              </>
+            )}
+
+            {activeLayer.kind === 'logo' && (
+              <>
+                <div className="field field--stack">
+                  <div className="field__head">
+                    <span>Logo Library</span>
+                    <span>{activeLayer.assetName}</span>
+                  </div>
+                  <div className="library-grid">
+                    {logoLibrary.map((entry) => (
+                      <button key={entry.id} type="button" className="library-card" onClick={() => applyLogoEntry(entry)}>
+                        <img src={entry.src} alt={entry.name} />
+                        <span>{entry.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <UploadButton
+                  label="Eigenes Logo hochladen"
+                  accept="image/*,.svg"
+                  onSelect={(event) => handleAssetUpload(event, ({ file, src }) => {
+                    const entry = {
+                      id: `upload_${Date.now()}`,
+                      name: file.name,
+                      src,
+                      defaults: {
+                        tint: activeLayer.logo.tint,
+                        preserveColor: true,
+                      },
+                    };
+                    setLogoLibrary((current) => [entry, ...current]);
+                    applyLogoEntry(entry);
+                  })}
+                />
+                <div className="field-grid">
+                  <SliderField label="Size" value={activeLayer.logo.size} min={0.06} max={0.6} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'logo.size', value)} />
+                  <ColorField label="Tint" value={activeLayer.logo.tint} onChange={(value) => updateLayer(activeLayer.id, 'logo.tint', value)} />
+                </div>
+                <PaletteSwatches onPick={(color) => updateLayer(activeLayer.id, 'logo.tint', color)} />
+                <div className="field-grid">
+                  <ToggleField label="Originalfarbe" checked={activeLayer.logo.preserveColor} onChange={(value) => updateLayer(activeLayer.id, 'logo.preserveColor', value)} />
+                  <ToggleField label="Weiß entfernen" checked={activeLayer.logo.removeWhite} onChange={(value) => updateLayer(activeLayer.id, 'logo.removeWhite', value)} />
+                </div>
+                <SliderField label="Threshold" value={activeLayer.logo.whiteThreshold} min={180} max={255} step={1} format={(value) => `${Math.round(value)}`} onChange={(value) => updateLayer(activeLayer.id, 'logo.whiteThreshold', value)} />
+              </>
+            )}
+
+            {activeLayer.kind === 'image' && (
+              <>
+                <UploadButton
+                  label={activeLayer.assetSrc ? 'Bild für diesen Layer ersetzen' : 'Bild für diesen Layer hochladen'}
+                  accept="image/*"
+                  onSelect={(event) => handleAssetUpload(event, ({ file, src }) => {
+                    replaceLayer(activeLayer.id, (layer) => ({
+                      ...layer,
+                      assetSrc: src,
+                      assetName: file.name,
+                    }));
+                  })}
+                />
+                <div className="status-pill">
+                  {activeLayer.assetSrc ? `Aktiv: ${activeLayer.assetName}` : 'Noch kein Bild geladen'}
+                </div>
+                <div className="field-grid">
+                  <SliderField label="Size" value={activeLayer.image.size} min={0.08} max={0.9} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'image.size', value)} />
+                  <SliderField label="Radius" value={activeLayer.image.radius} min={0} max={0.5} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'image.radius', value)} />
+                </div>
+                <div className="field-grid">
+                  <ToggleField label="Originalfarbe" checked={activeLayer.image.preserveColor} onChange={(value) => updateLayer(activeLayer.id, 'image.preserveColor', value)} />
+                  <ToggleField label="Weiß entfernen" checked={activeLayer.image.removeWhite} onChange={(value) => updateLayer(activeLayer.id, 'image.removeWhite', value)} />
+                </div>
+                <ColorField label="Tint" value={activeLayer.image.tint} onChange={(value) => updateLayer(activeLayer.id, 'image.tint', value)} />
+                <PaletteSwatches onPick={(color) => updateLayer(activeLayer.id, 'image.tint', color)} />
+              </>
             )}
 
             {activeLayer.kind === 'text' && (
-              <Section title="Text Settings" icon={Type}>
+              <>
+                <SelectField
+                  label="Texttyp"
+                  value={activeLayer.role ?? 'body'}
+                  options={TEXT_ROLE_OPTIONS}
+                  onChange={(value) => updateLayer(activeLayer.id, 'role', value)}
+                />
                 <label className="field">
                   <div className="field__head">
                     <span>Text</span>
                   </div>
-                  <textarea value={activeLayer.text.value} onChange={(event) => updateLayer(activeLayer.id, 'text.value', event.target.value)} />
+                  <textarea
+                    value={activeLayer.text.value}
+                    onChange={(event) => updateLayer(activeLayer.id, 'text.value', event.target.value)}
+                  />
                 </label>
                 <div className="field-grid">
                   <SelectField label="Font" value={activeLayer.text.font} options={GOOGLE_FONTS} onChange={(value) => updateLayer(activeLayer.id, 'text.font', value)} />
-                  <SelectField label="Layout" value={activeLayer.text.layout} options={ARRANGEMENTS} onChange={(value) => updateLayer(activeLayer.id, 'text.layout', value)} />
+                  <SelectField
+                    label="Align"
+                    value={activeLayer.text.align}
+                    options={[
+                      { value: 'left', label: 'Left' },
+                      { value: 'center', label: 'Center' },
+                      { value: 'right', label: 'Right' },
+                    ]}
+                    onChange={(value) => updateLayer(activeLayer.id, 'text.align', value)}
+                  />
                 </div>
                 <div className="field-grid">
-                  <ColorField label="Color" value={activeLayer.text.color} onChange={(value) => updateLayer(activeLayer.id, 'text.color', value)} />
-                  <SliderField label="Weight" value={activeLayer.text.weight} min={200} max={900} step={100} format={(value) => `${value}`} onChange={(value) => updateLayer(activeLayer.id, 'text.weight', value)} />
+                  <SliderField label="Größe" value={activeLayer.text.size} min={14} max={180} step={1} format={(value) => `${Math.round(value)}px`} onChange={(value) => updateLayer(activeLayer.id, 'text.size', value)} />
+                  <SliderField label="Breite" value={activeLayer.text.width} min={0.12} max={0.94} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'text.width', value)} />
                 </div>
                 <div className="field-grid">
-                  <SliderField label="Size" value={activeLayer.text.size} min={24} max={260} step={1} format={(value) => `${value}px`} onChange={(value) => updateLayer(activeLayer.id, 'text.size', value)} />
-                  <SliderField label="Tracking" value={activeLayer.text.tracking} min={-6} max={40} step={1} format={(value) => `${value}px`} onChange={(value) => updateLayer(activeLayer.id, 'text.tracking', value)} />
+                  <SliderField label="Leading" value={activeLayer.text.leading} min={0.8} max={1.8} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'text.leading', value)} />
+                  <SliderField label="Tracking" value={activeLayer.text.tracking} min={-4} max={8} step={0.1} onChange={(value) => updateLayer(activeLayer.id, 'text.tracking', value)} />
                 </div>
                 <div className="field-grid">
-                  <SliderField label="Leading" value={activeLayer.text.leading} min={0.6} max={1.8} step={0.01} format={(value) => value.toFixed(2)} onChange={(value) => updateLayer(activeLayer.id, 'text.leading', value)} />
-                  <SliderField label="Outline" value={activeLayer.text.outline} min={0} max={10} step={0.5} format={(value) => `${value.toFixed(1)}px`} onChange={(value) => updateLayer(activeLayer.id, 'text.outline', value)} />
+                  <SelectField
+                    label="Weight"
+                    value={activeLayer.text.weight}
+                    options={['400', '500', '600', '700', '800', '900']}
+                    onChange={(value) => updateLayer(activeLayer.id, 'text.weight', value)}
+                  />
+                  <ColorField label="Farbe" value={activeLayer.text.color} onChange={(value) => updateLayer(activeLayer.id, 'text.color', value)} />
                 </div>
-                {activeLayer.text.layout !== 'single' && (
-                  <div className="field-grid">
-                    <SliderField label="Instances" value={activeLayer.text.instances} min={1} max={16} step={1} format={(value) => `${value}`} onChange={(value) => updateLayer(activeLayer.id, 'text.instances', value)} />
-                    <SliderField label="Spread" value={activeLayer.text.spread} min={0} max={0.8} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'text.spread', value)} />
-                  </div>
-                )}
-              </Section>
+                <div className="field-grid">
+                  <ToggleField label="Uppercase" checked={activeLayer.text.uppercase} onChange={(value) => updateLayer(activeLayer.id, 'text.uppercase', value)} />
+                  <ToggleField label="Italic" checked={activeLayer.text.italic} onChange={(value) => updateLayer(activeLayer.id, 'text.italic', value)} />
+                </div>
+                <PaletteSwatches onPick={(color) => updateLayer(activeLayer.id, 'text.color', color)} />
+              </>
             )}
-
-            {activeLayer.kind === 'logo' && (
-              <Section title="Logo Settings" icon={ImagePlus}>
-                <SelectField
-                  label="Logo"
-                  value={activeLayer.assetSrc}
-                  options={logoLibrary.map((logo) => ({ value: logo.src, label: logo.name }))}
-                  onChange={(value) => {
-                    const entry = logoLibrary.find((logo) => logo.src === value);
-                    if (entry) {
-                      applyLogoPresetToLayer(activeLayer.id, entry);
-                    }
-                  }}
-                />
-                <div className="asset-note">{activeLayer.assetName || 'Kein Logo aktiv'}</div>
-                <div className="field-grid">
-                  <ColorField label="Tint" value={activeLayer.logo.tint} onChange={(value) => updateLayer(activeLayer.id, 'logo.tint', value)} />
-                  <label className="toggle">
-                    <span>Originalfarben</span>
-                    <input type="checkbox" checked={activeLayer.logo.preserveColor} onChange={(event) => updateLayer(activeLayer.id, 'logo.preserveColor', event.target.checked)} />
-                  </label>
-                </div>
-                <div className="field-grid">
-                  <label className="toggle">
-                    <span>Weiss freistellen</span>
-                    <input type="checkbox" checked={activeLayer.logo.removeWhite} onChange={(event) => updateLayer(activeLayer.id, 'logo.removeWhite', event.target.checked)} />
-                  </label>
-                  <SliderField label="Threshold" value={activeLayer.logo.whiteThreshold} min={180} max={250} step={1} format={(value) => `${value}`} onChange={(value) => updateLayer(activeLayer.id, 'logo.whiteThreshold', value)} />
-                </div>
-                <div className="field-grid">
-                  <SelectField label="Arrangement" value={activeLayer.logo.arrangement} options={ARRANGEMENTS} onChange={(value) => updateLayer(activeLayer.id, 'logo.arrangement', value)} />
-                  <SliderField label="Instances" value={activeLayer.logo.instances} min={1} max={12} step={1} format={(value) => `${value}`} onChange={(value) => updateLayer(activeLayer.id, 'logo.instances', value)} />
-                </div>
-                <div className="field-grid">
-                  <SliderField label="Size" value={activeLayer.logo.size} min={0.05} max={0.5} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'logo.size', value)} />
-                  <SliderField label="Spread" value={activeLayer.logo.spread} min={0} max={0.8} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'logo.spread', value)} />
-                </div>
-                <div className="field-grid">
-                  <SliderField label="Stretch X" value={activeLayer.logo.stretchX} min={0.35} max={2.5} step={0.01} format={(value) => `${value.toFixed(2)}x`} onChange={(value) => updateLayer(activeLayer.id, 'logo.stretchX', value)} />
-                  <SliderField label="Stretch Y" value={activeLayer.logo.stretchY} min={0.35} max={2.5} step={0.01} format={(value) => `${value.toFixed(2)}x`} onChange={(value) => updateLayer(activeLayer.id, 'logo.stretchY', value)} />
-                </div>
-                <div className="field-grid">
-                  <SliderField label="Pulse X" value={activeLayer.logo.pulseX} min={0} max={0.8} step={0.01} format={(value) => `${value.toFixed(2)}`} onChange={(value) => updateLayer(activeLayer.id, 'logo.pulseX', value)} />
-                  <SliderField label="Pulse Y" value={activeLayer.logo.pulseY} min={0} max={0.8} step={0.01} format={(value) => `${value.toFixed(2)}`} onChange={(value) => updateLayer(activeLayer.id, 'logo.pulseY', value)} />
-                </div>
-                <div className="field-grid">
-                  <SliderField label="Pulse Speed" value={activeLayer.logo.pulseSpeed} min={0.01} max={1.5} step={0.01} format={(value) => `${value.toFixed(2)}hz`} onChange={(value) => updateLayer(activeLayer.id, 'logo.pulseSpeed', value)} />
-                  <SliderField label="Color Drift" value={activeLayer.logo.colorDrift} min={0} max={180} step={1} format={(value) => `${Math.round(value)}°`} onChange={(value) => updateLayer(activeLayer.id, 'logo.colorDrift', value)} />
-                </div>
-                <SliderField label="Color Speed" value={activeLayer.logo.colorSpeed} min={0.01} max={1.5} step={0.01} format={(value) => `${value.toFixed(2)}hz`} onChange={(value) => updateLayer(activeLayer.id, 'logo.colorSpeed', value)} />
-              </Section>
-            )}
-
-            {activeLayer.kind === 'image' && (
-              <Section title="Image Settings" icon={ImagePlus}>
-                <UploadButton
-                  label={activeLayer.assetSrc ? 'Bild austauschen' : 'Bild hochladen'}
-                  accept="image/*"
-                  onSelect={(event) =>
-                    handleAssetUpload(event, ({ file, src }) => {
-                      updateLayer(activeLayer.id, 'assetSrc', src);
-                      updateLayer(activeLayer.id, 'assetName', file.name);
-                    })
-                  }
-                />
-                <div className="asset-note">{activeLayer.assetName || 'Kein Bild aktiv'}</div>
-                <div className="field-grid">
-                  <ColorField label="Tint" value={activeLayer.image.tint} onChange={(value) => updateLayer(activeLayer.id, 'image.tint', value)} />
-                  <label className="toggle">
-                    <span>Originalfarben</span>
-                    <input type="checkbox" checked={activeLayer.image.preserveColor} onChange={(event) => updateLayer(activeLayer.id, 'image.preserveColor', event.target.checked)} />
-                  </label>
-                </div>
-                <div className="field-grid">
-                  <label className="toggle">
-                    <span>Weiss freistellen</span>
-                    <input type="checkbox" checked={activeLayer.image.removeWhite} onChange={(event) => updateLayer(activeLayer.id, 'image.removeWhite', event.target.checked)} />
-                  </label>
-                  <SliderField label="Threshold" value={activeLayer.image.whiteThreshold} min={180} max={250} step={1} format={(value) => `${value}`} onChange={(value) => updateLayer(activeLayer.id, 'image.whiteThreshold', value)} />
-                </div>
-                <div className="field-grid">
-                  <SelectField label="Arrangement" value={activeLayer.image.arrangement} options={ARRANGEMENTS} onChange={(value) => updateLayer(activeLayer.id, 'image.arrangement', value)} />
-                  <SliderField label="Instances" value={activeLayer.image.instances} min={1} max={12} step={1} format={(value) => `${value}`} onChange={(value) => updateLayer(activeLayer.id, 'image.instances', value)} />
-                </div>
-                <div className="field-grid">
-                  <SliderField label="Size" value={activeLayer.image.size} min={0.05} max={0.6} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'image.size', value)} />
-                  <SliderField label="Spread" value={activeLayer.image.spread} min={0} max={0.8} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'image.spread', value)} />
-                </div>
-                <div className="field-grid">
-                  <SliderField label="Stretch X" value={activeLayer.image.stretchX} min={0.35} max={2.5} step={0.01} format={(value) => `${value.toFixed(2)}x`} onChange={(value) => updateLayer(activeLayer.id, 'image.stretchX', value)} />
-                  <SliderField label="Stretch Y" value={activeLayer.image.stretchY} min={0.35} max={2.5} step={0.01} format={(value) => `${value.toFixed(2)}x`} onChange={(value) => updateLayer(activeLayer.id, 'image.stretchY', value)} />
-                </div>
-                <div className="field-grid">
-                  <SliderField label="Pulse X" value={activeLayer.image.pulseX} min={0} max={0.8} step={0.01} format={(value) => `${value.toFixed(2)}`} onChange={(value) => updateLayer(activeLayer.id, 'image.pulseX', value)} />
-                  <SliderField label="Pulse Y" value={activeLayer.image.pulseY} min={0} max={0.8} step={0.01} format={(value) => `${value.toFixed(2)}`} onChange={(value) => updateLayer(activeLayer.id, 'image.pulseY', value)} />
-                </div>
-                <SliderField label="Pulse Speed" value={activeLayer.image.pulseSpeed} min={0.01} max={1.5} step={0.01} format={(value) => `${value.toFixed(2)}hz`} onChange={(value) => updateLayer(activeLayer.id, 'image.pulseSpeed', value)} />
-              </Section>
-            )}
-          </>
+          </Section>
         )}
       </aside>
 
       <main className="workspace">
-        <header className="workspace__header">
-          <div className="workspace__stats">
-            <span>{preset.label}</span>
-            <span>{preset.width} x {preset.height}</span>
-            <span>{scene.layers.length} Layer</span>
+        <div className="workspace__header">
+          <div>
+            <div className="eyebrow">Preview</div>
+            <h2>Logo, Headline und Textblöcke lassen sich direkt auf der Fläche ziehen.</h2>
           </div>
-          <div className="button-row">
-            <button className="ghost-button" onClick={() => updateScene('guides.grid', !scene.guides.grid)}>
-              <Grid2x2 size={15} />
-              Grid
-            </button>
-            <label className="zoom-control">
-              <span>Zoom</span>
-              <input type="range" min="0.5" max="1.8" step="0.01" value={previewZoom} onChange={(event) => setPreviewZoom(Number(event.target.value))} />
-            </label>
-            <button className="ghost-button" onClick={() => exportFrame('png')}>
-              <Download size={15} />
-              PNG
-            </button>
-            <button className="ghost-button" onClick={() => exportFrame('jpeg')}>JPG</button>
-            <button className="ghost-button" onClick={exportSceneJson}>Scene JSON</button>
-          </div>
-        </header>
+          <p>
+            Die Formen ändern sich nur per Shape-Randomizer. Deine Texte bleiben dabei unverändert.
+          </p>
+        </div>
 
-        <div className="stage" ref={stageRef}>
+        <div className="stage-shell" ref={stageRef}>
           <div
-            className="stage__frame"
+            className="stage"
             style={{
-              width: `${preset.width * previewScale}px`,
-              height: `${preset.height * previewScale}px`,
+              width: preset.width * previewScale,
+              height: preset.height * previewScale,
             }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
           >
             <canvas
               ref={canvasRef}
               width={preset.width}
               height={preset.height}
+              className="stage__canvas"
               style={{
-                width: `${preset.width * previewScale}px`,
-                height: `${preset.height * previewScale}px`,
+                width: preset.width * previewScale,
+                height: preset.height * previewScale,
               }}
             />
-
-            {scene.guides.grid && (
-              <div className="grid-overlay">
-                <div className="grid-overlay__safe" />
-              </div>
-            )}
+            <div className="stage__overlay">
+              {layerBounds.map(({ layerId, bounds }) => (
+                <button
+                  key={layerId}
+                  type="button"
+                  className={`bound-box ${layerId === activeLayerId ? 'is-active' : ''}`}
+                  style={{
+                    left: bounds.x * previewScale,
+                    top: bounds.y * previewScale,
+                    width: Math.max(12, bounds.width * previewScale),
+                    height: Math.max(12, bounds.height * previewScale),
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setActiveLayerId(layerId)}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
-        <footer className="timeline-bar">
-          <div className="button-row">
-            <button className="transport-button" onClick={() => updateScene('playback.playing', !scene.playback.playing)}>
-              {scene.playback.playing ? <Pause size={16} /> : <Play size={16} />}
-            </button>
-            <button className="transport-button" onClick={() => updateScene('playback.time', 0)}>
-              <RotateCcw size={16} />
-            </button>
+        <div className="reference-card">
+          <div>
+            <div className="eyebrow">Referenz</div>
+            <h3>Post-Form als Ausgangspunkt</h3>
+            <p>Die Standard-Komposition orientiert sich an deiner gelieferten Pixel-Form und bleibt dabei editierbar.</p>
           </div>
-          <input
-            className="timeline-slider"
-            type="range"
-            min="0"
-            max={scene.playback.duration}
-            step="0.01"
-            value={scene.playback.time}
-            onChange={(event) => updateScene('playback.time', Number(event.target.value))}
-          />
-          <div className="timeline-bar__meta">
-            <span>{scene.playback.time.toFixed(2)}s</span>
-            <span>{scene.playback.duration.toFixed(2)}s</span>
-          </div>
-        </footer>
+          <img src="/references/post-form-01.png" alt="Post Form Referenz" />
+        </div>
       </main>
     </div>
   );

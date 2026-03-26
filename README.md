@@ -1,14 +1,14 @@
-# Instagram Motion Engine
+# digilab.ai News Studio
 
-TouchDesigner-inspirierte Motion-Engine fuer animierte Instagram-Posts.
+Statischer Instagram-News-Composer fuer `digilab.ai` in DWD-naher CI.
 
 ## Features
 
-- Layer-System fuer Shape, Text, Logo und Image
-- Timeline mit FPS, Dauer, Loop und Playhead
-- Pro Layer eigene Modulatoren fuer Position, Scale, Rotation und Opacity
-- Eingebaute Logo-Library
-- Export als PNG und JPG
+- verschiebbares Logo
+- Headline, Kicker, Meta- und Textbloecke
+- variable, pixelige Hintergrundformen
+- mehr Typografieoptionen statt Animation
+- PNG-Export
 
 ## Lokaler Start
 
@@ -17,15 +17,8 @@ npm install
 npm run dev
 ```
 
-## Production Build
+## Build
 
 ```bash
 npm run build
 ```
-
-## Netlify
-
-Netlify ist bereits ueber `netlify.toml` vorbereitet:
-
-- Build command: `npm run build`
-- Publish directory: `dist`
