@@ -339,6 +339,26 @@ const App = () => {
   const gridSpec = getGridSpec(scene.presetId);
 
   const getPrimaryTextLayer = (role) => scene.layers.find((layer) => layer.kind === 'text' && layer.role === role) ?? null;
+  const getPrimaryTextLayerByRoles = (...roles) => scene.layers.find((layer) => layer.kind === 'text' && roles.includes(layer.role)) ?? null;
+
+  const updatePrimaryTextColor = (roles, color) => {
+    const roleList = Array.isArray(roles) ? roles : [roles];
+    setScene((current) => ({
+      ...current,
+      layers: current.layers.map((layer) => {
+        if (layer.kind !== 'text' || !roleList.includes(layer.role)) {
+          return layer;
+        }
+        return {
+          ...layer,
+          text: {
+            ...layer.text,
+            color,
+          },
+        };
+      }),
+    }));
+  };
 
   const applyColorPreset = (scheme) => {
     setScene((current) => {
@@ -1017,6 +1037,45 @@ const App = () => {
               }
             }}
           />
+        </Section>
+
+        <Section title="Textfarben" icon={Type}>
+          <div className="field-grid">
+            <ColorField
+              label="Headline"
+              value={getPrimaryTextLayer('headline')?.text.color ?? '#FFF500'}
+              onChange={(value) => updatePrimaryTextColor('headline', value)}
+            />
+            <ColorField
+              label="Textbox"
+              value={getPrimaryTextLayerByRoles('textbox', 'body')?.text.color ?? '#F3F1E8'}
+              onChange={(value) => updatePrimaryTextColor(['textbox', 'body'], value)}
+            />
+          </div>
+          <div className="field-grid">
+            <ColorField
+              label="Kicker"
+              value={getPrimaryTextLayer('kicker')?.text.color ?? '#FFFFFF'}
+              onChange={(value) => updatePrimaryTextColor('kicker', value)}
+            />
+            <ColorField
+              label="Caption"
+              value={getPrimaryTextLayer('caption')?.text.color ?? '#FFFFFF'}
+              onChange={(value) => updatePrimaryTextColor('caption', value)}
+            />
+          </div>
+          <div className="button-row">
+            {TEXT_SWATCHES.map((color) => (
+              <button
+                key={`text-swatch-${color}`}
+                type="button"
+                className="swatch"
+                style={{ background: color }}
+                onClick={() => updatePrimaryTextColor(['headline', 'textbox', 'body', 'kicker', 'caption'], color)}
+                aria-label={`Alle Textfarben auf ${color} setzen`}
+              />
+            ))}
+          </div>
         </Section>
 
         <Section title="Layer Stack" icon={Layers}>
