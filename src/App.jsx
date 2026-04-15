@@ -1065,7 +1065,7 @@ const App = () => {
             />
           </div>
           <div className="button-row">
-            {TEXT_SWATCHES.map((color) => (
+            {BRAND_COLORS.map((color) => (
               <button
                 key={`text-swatch-${color}`}
                 type="button"
