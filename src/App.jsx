@@ -1326,7 +1326,7 @@ const App = () => {
             <h2>Logo, Headline und Textblöcke lassen sich direkt auf der Fläche ziehen.</h2>
           </div>
           <p>
-            Die Formen ändern sich nur per Shape-Randomizer. Deine Texte bleiben dabei unverändert.
+            Die Vorschau bleibt beim Arbeiten sichtbar, damit Komposition, Typo und Logo jederzeit im Blick bleiben.
           </p>
         </div>
 
@@ -1380,15 +1380,6 @@ const App = () => {
               ))}
             </div>
           </div>
-        </div>
-
-        <div className="reference-card">
-          <div>
-            <div className="eyebrow">Referenz</div>
-            <h3>Post-Form als Ausgangspunkt</h3>
-            <p>Die Standard-Komposition orientiert sich an deiner gelieferten Pixel-Form und bleibt dabei editierbar.</p>
-          </div>
-          <img src="/references/post-form-01.png" alt="Post Form Referenz" />
         </div>
       </main>
     </div>
