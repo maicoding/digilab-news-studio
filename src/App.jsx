@@ -21,7 +21,6 @@ import {
   BRAND_COLORS,
   BUILT_IN_LOGOS,
   CANVAS_PRESETS,
-  GOOGLE_FONTS,
   TEXT_ROLE_OPTIONS,
   createImageLayer,
   createInitialScene,
@@ -329,6 +328,8 @@ const App = () => {
   const [previewZoom, setPreviewZoom] = useState(0.78);
   const [dragState, setDragState] = useState(null);
   const [logoLibrary, setLogoLibrary] = useState(BUILT_IN_LOGOS);
+  const [hasDegular, setHasDegular] = useState(false);
+  const [typoAdvanced, setTypoAdvanced] = useState(false);
   const canvasRef = useRef(null);
   const stageRef = useRef(null);
   const imageCacheRef = useRef(new Map());
@@ -449,7 +450,10 @@ const App = () => {
   };
 
   useEffect(() => {
-    document.fonts?.ready.then(() => setAssetVersion((value) => value + 1));
+    document.fonts?.ready.then(() => {
+      setHasDegular(document.fonts?.check('600 32px Degular') ?? false);
+      setAssetVersion((value) => value + 1);
+    });
   }, []);
 
   const previewScale = useMemo(() => {
@@ -464,6 +468,15 @@ const App = () => {
   }, [preset.height, preset.width, previewZoom, stageSize.height, stageSize.width]);
 
   const updateScene = (path, value) => setScene((current) => deepSet(current, path, value));
+
+  const requireDegular = () => {
+    const loaded = document.fonts?.check('600 32px Degular') ?? false;
+    setHasDegular(loaded);
+    if (!loaded) {
+      window.alert('Degular ist nicht geladen. Export ist gesperrt.');
+    }
+    return loaded;
+  };
 
   const updateLayer = (layerId, path, value) => {
     setScene((current) => ({
@@ -777,7 +790,30 @@ const App = () => {
     event.target.value = '';
   };
 
+  const handleFontUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    const src = URL.createObjectURL(file);
+    try {
+      const face = new FontFace('Degular', `url(${src})`, { style: 'normal', weight: '400 800' });
+      await face.load();
+      document.fonts.add(face);
+      setHasDegular(true);
+      setAssetVersion((value) => value + 1);
+    } catch (error) {
+      console.error(error);
+      window.alert('Degular konnte nicht geladen werden.');
+      URL.revokeObjectURL(src);
+    }
+    event.target.value = '';
+  };
+
   const exportPng = () => {
+    if (!requireDegular()) {
+      return;
+    }
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = preset.width;
     exportCanvas.height = preset.height;
@@ -1040,6 +1076,12 @@ const App = () => {
         </Section>
 
         <Section title="Textfarben" icon={Type}>
+          <UploadButton label="Degular laden" accept=".otf,.ttf,.woff,.woff2,font/*" onSelect={handleFontUpload} />
+          <div className="status-pill">{hasDegular ? 'Degular geladen.' : 'Degular fehlt. Export bleibt gesperrt.'}</div>
+          <ToggleField label="Typo Advanced" checked={typoAdvanced} onChange={(value) => {
+            setTypoAdvanced(value);
+            updateScene('typoAdvanced', value);
+          }} />
           <div className="field-grid">
             <ColorField
               label="Headline"
@@ -1337,7 +1379,7 @@ const App = () => {
                   />
                 </label>
                 <div className="field-grid">
-                  <SelectField label="Font" value={activeLayer.text.font} options={GOOGLE_FONTS} onChange={(value) => updateLayer(activeLayer.id, 'text.font', value)} />
+                  <div className="status-pill">Schrift: Degular</div>
                   <SelectField
                     label="Ausrichtung"
                     value={activeLayer.text.align}
@@ -1351,20 +1393,27 @@ const App = () => {
                   />
                 </div>
                 <div className="field-grid">
-                  <SliderField label="Größe" value={activeLayer.text.size} min={14} max={180} step={1} format={(value) => `${Math.round(value)}px`} onChange={(value) => updateLayer(activeLayer.id, 'text.size', value)} />
                   <SliderField label="Breite" value={activeLayer.text.width} min={0.12} max={0.94} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'text.width', value)} />
+                  {!typoAdvanced && <div className="status-pill">Größe, Zeilenabstand und Tracking sind CI-gebunden.</div>}
                 </div>
+                {typoAdvanced && (
+                  <>
+                    <div className="field-grid">
+                      <SliderField label="Größe" value={activeLayer.text.size} min={14} max={180} step={1} format={(value) => `${Math.round(value)}px`} onChange={(value) => updateLayer(activeLayer.id, 'text.size', value)} />
+                      <SliderField label="Zeilenabstand" value={activeLayer.text.leading} min={0.45} max={1.8} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'text.leading', value)} />
+                    </div>
+                    <div className="field-grid">
+                      <SliderField label="Tracking" value={activeLayer.text.tracking} min={-4} max={8} step={0.1} onChange={(value) => updateLayer(activeLayer.id, 'text.tracking', value)} />
+                      <SelectField
+                        label="Weight"
+                        value={activeLayer.text.weight}
+                        options={['400', '500', '600', '700', '800']}
+                        onChange={(value) => updateLayer(activeLayer.id, 'text.weight', value)}
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="field-grid">
-                  <SliderField label="Zeilenabstand" value={activeLayer.text.leading} min={0.45} max={1.8} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'text.leading', value)} />
-                  <SliderField label="Tracking" value={activeLayer.text.tracking} min={-4} max={8} step={0.1} onChange={(value) => updateLayer(activeLayer.id, 'text.tracking', value)} />
-                </div>
-                <div className="field-grid">
-                  <SelectField
-                    label="Weight"
-                    value={activeLayer.text.weight}
-                    options={['400', '500', '600', '700', '800', '900']}
-                    onChange={(value) => updateLayer(activeLayer.id, 'text.weight', value)}
-                  />
                   <ColorField label="Farbe" value={activeLayer.text.color} onChange={(value) => updateLayer(activeLayer.id, 'text.color', value)} />
                 </div>
                 <div className="field-grid">

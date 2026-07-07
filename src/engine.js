@@ -89,21 +89,37 @@ const getProcessedAsset = (image, settings, color) => {
   return canvas;
 };
 
-const getTextFont = (text, scale = 1) => {
-  const style = text.italic ? 'italic ' : '';
-  return `${style}${text.weight} ${Math.round(text.size * scale)}px "${text.font}", sans-serif`;
+const getTextFont = (text, scale = 1, advanced = false) => {
+  const roleWeights = {
+    headline: '700',
+    textbox: '500',
+    body: '500',
+    kicker: '600',
+    caption: '500',
+  };
+  const weight = advanced ? text.weight : roleWeights[text.role] ?? roleWeights.body;
+  return `${weight} ${Math.round(text.size * scale)}px "Degular", "Helvetica Neue", Helvetica, Arial, sans-serif`;
 };
 
-const getLineHeight = (text, scale = 1) => {
+const getLineHeight = (text, scale = 1, advanced = false) => {
   const fontSize = text.size * scale;
-  const roleFactor = text.role === 'headline' ? 0.72 : 1;
-  return Math.max(fontSize * 0.46, fontSize * text.leading * roleFactor);
+  if (advanced) {
+    return fontSize * text.leading;
+  }
+  const roleLeading = {
+    headline: 0.9,
+    textbox: 1.18,
+    body: 1.18,
+    kicker: 1.08,
+    caption: 1.08,
+  };
+  return fontSize * (roleLeading[text.role] ?? roleLeading.body);
 };
 
-const layoutText = (ctx, text, maxWidth, scale = 1) => {
+const layoutText = (ctx, text, maxWidth, scale = 1, advanced = false) => {
   const output = [];
   const paragraphs = String(text.value ?? '').split('\n');
-  ctx.font = getTextFont(text, scale);
+  ctx.font = getTextFont(text, scale, advanced);
 
   paragraphs.forEach((paragraph, paragraphIndex) => {
     const source = text.uppercase ? paragraph.toUpperCase() : paragraph;
@@ -116,7 +132,7 @@ const layoutText = (ctx, text, maxWidth, scale = 1) => {
     let line = '';
     words.forEach((word) => {
       const candidate = line ? `${line} ${word}` : word;
-      const candidateWidth = ctx.measureText(candidate).width + Math.max(0, candidate.length - 1) * (text.tracking * scale);
+      const candidateWidth = ctx.measureText(candidate).width + (advanced ? Math.max(0, candidate.length - 1) * (text.tracking * scale) : 0);
       if (candidateWidth > maxWidth && line) {
         output.push(line);
         line = word;
@@ -131,7 +147,7 @@ const layoutText = (ctx, text, maxWidth, scale = 1) => {
 
   return {
     lines: output,
-    lineHeight: getLineHeight(text, scale),
+    lineHeight: getLineHeight(text, scale, advanced),
   };
 };
 
@@ -159,7 +175,7 @@ const drawJustifiedLine = (ctx, line, y, maxWidth, tracking) => {
     return;
   }
 
-  const wordWidths = words.map((word) => ctx.measureText(word).width + Math.max(0, word.length - 1) * tracking);
+  const wordWidths = words.map((word) => ctx.measureText(word).width);
   const totalWordsWidth = wordWidths.reduce((sum, width) => sum + width, 0);
   const gap = (maxWidth - totalWordsWidth) / (words.length - 1);
 
@@ -170,26 +186,31 @@ const drawJustifiedLine = (ctx, line, y, maxWidth, tracking) => {
   });
 };
 
-const drawTextLayer = (ctx, layer, width, height) => {
+const drawTextLayer = (ctx, layer, width, height, scene) => {
   const text = layer.text;
+  text.role = layer.role;
+  const advanced = scene.typoAdvanced === true;
   const maxWidth = width * text.width;
   const anchorX = layer.transform.x * width;
   const anchorY = layer.transform.y * height;
-  const { lines, lineHeight } = layoutText(ctx, { ...text, role: layer.role }, maxWidth);
+  const { lines, lineHeight } = layoutText(ctx, { ...text, role: layer.role }, maxWidth, 1, advanced);
 
   ctx.save();
   ctx.translate(anchorX, anchorY);
   ctx.rotate((layer.transform.rotation * Math.PI) / 180);
   ctx.fillStyle = text.color;
-  ctx.font = getTextFont(text);
+  ctx.font = getTextFont(text, 1, advanced);
+  ctx.fontKerning = 'normal';
   ctx.textBaseline = 'top';
   ctx.textAlign = text.align === 'justify' ? 'left' : text.align;
-  ctx.letterSpacing = `${text.tracking}px`;
+  if ('letterSpacing' in ctx) {
+    ctx.letterSpacing = advanced ? `${text.tracking}px` : '0px';
+  }
 
   lines.forEach((line, index) => {
     const y = index * lineHeight;
     if (shouldJustifyLine(text.align, line, index, lines)) {
-      drawJustifiedLine(ctx, line, y, maxWidth, text.tracking);
+      drawJustifiedLine(ctx, line, y, maxWidth, advanced ? text.tracking : 0);
     } else {
       ctx.fillText(line, 0, y);
     }
@@ -387,7 +408,7 @@ export const measureLayerBounds = ({ layer, width, height, getImage }) => {
       if (shouldJustifyLine(layer.text.align, line, index, lines)) {
         return Math.max(max, maxWidth);
       }
-      const candidate = ctx.measureText(line).width + Math.max(0, line.length - 1) * layer.text.tracking;
+      const candidate = ctx.measureText(line).width;
       return Math.max(max, candidate);
     }, 0);
     const blockHeight = Math.max(1, lines.length) * lineHeight;
@@ -405,6 +426,10 @@ export const measureLayerBounds = ({ layer, width, height, getImage }) => {
 
 export const renderScene = ({ ctx, width, height, scene, getImage }) => {
   ctx.clearRect(0, 0, width, height);
+  ctx.fontKerning = 'normal';
+  if ('letterSpacing' in ctx) {
+    ctx.letterSpacing = '0px';
+  }
   drawBackground(ctx, width, height, scene.background, getImage);
 
   scene.layers.forEach((layer) => {
@@ -420,7 +445,7 @@ export const renderScene = ({ ctx, width, height, scene, getImage }) => {
     if (layer.kind === 'shape') {
       drawPixelShape(ctx, layer, width, height, getImage);
     } else if (layer.kind === 'text') {
-      drawTextLayer(ctx, layer, width, height);
+      drawTextLayer(ctx, layer, width, height, scene);
     } else if (layer.kind === 'logo') {
       const image = getImage(layer.assetSrc);
       if (image) {
