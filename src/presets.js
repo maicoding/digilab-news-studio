@@ -160,7 +160,7 @@ const textDefaults = {
     name: 'Body',
     x: 0.12,
     y: 0.79,
-    value: 'Kurz, klar, CI-treu. Dieses Tool erzeugt statische News-Posts mit variablen Formen und stabilen Textblöcken für Instagram.',
+    value: 'Textblock',
     width: 0.72,
     size: 34,
     font: 'Degular',

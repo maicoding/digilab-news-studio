@@ -180,7 +180,7 @@ const CONTENT_PRESETS = [
     label: 'Workshop',
     kicker: 'WORKSHOP',
     headline: 'Tools fuer\nkreative KI',
-    textbox: 'Praxisnaher Workshop mit Inputs, Beispielen und offener Fragerunde. Ideal fuer erste Einblicke, Austausch und konkrete Anwendungen im DigiLab.ai Kontext.',
+    textbox: 'Textblock',
   },
   {
     id: 'termin',
@@ -962,7 +962,7 @@ const App = () => {
             onChange={(value) => updateScene('presetId', value)}
           />
           <SliderField
-            label="Preview Zoom"
+            label="Zoom"
             value={previewZoom}
             min={0.45}
             max={1}
@@ -1011,7 +1011,7 @@ const App = () => {
             ))}
           </div>
           <div className="status-pill">
-            Setzt Kicker, Headline und Textbox mit sinnvollen Starttexten. Dein Layout bleibt dabei erhalten.
+            Inhalt einsetzen
           </div>
         </Section>
 
