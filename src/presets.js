@@ -176,7 +176,7 @@ const textDefaults = {
     name: 'Textbox',
     x: 0.12,
     y: 0.74,
-    value: 'Kurz, klar und gut lesbar. Diese Textbox liefert den Kontext zur Headline und bleibt ruhig genug, damit Form, Logo und CI weiter wirken koennen.',
+    value: 'Textblock',
     width: 0.58,
     size: 31,
     font: 'Degular',
