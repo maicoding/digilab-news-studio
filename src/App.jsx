@@ -1428,16 +1428,6 @@ const App = () => {
       </aside>
 
       <main className="workspace">
-        <div className="workspace__header">
-          <div>
-            <div className="eyebrow">Preview</div>
-            <h2>Logo, Headline und Textblöcke lassen sich direkt auf der Fläche ziehen.</h2>
-          </div>
-          <p>
-            Die Vorschau bleibt beim Arbeiten sichtbar, damit Komposition, Typo und Logo jederzeit im Blick bleiben.
-          </p>
-        </div>
-
         <div className="stage-shell" ref={stageRef}>
           <div
             className="stage"
