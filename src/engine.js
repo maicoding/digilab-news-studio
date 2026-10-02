@@ -99,31 +99,32 @@ const getTextFont = (text, scale = 1, advanced = false) => {
   return `${text.italic ? 'italic' : 'normal'} ${weight} ${Math.round(text.size * scale)}px ${cssFamily}, "Helvetica Neue", Helvetica, Arial, sans-serif`;
 };
 
-const getLineHeight = (text, scale = 1, advanced = false) => {
+// Baseline spacing follows the stored setting in every editing mode.
+const getLineHeight = (ctx, text, scale = 1) => {
   const fontSize = text.size * scale;
-  if (advanced) {
-    return fontSize * text.leading;
-  }
-  const roleLeading = {
-    headline: 0.9,
-    textbox: 1.18,
-    body: 1.18,
-    kicker: 1.08,
-    caption: 1.08,
-  };
-  return fontSize * (roleLeading[text.role] ?? roleLeading.body);
+  const defaults = {headline: 1.08, textbox: 1.4, body: 1.4, kicker: 1.2, caption: 1.3};
+  const requested = Number(text.leading) || defaults[text.role] || 1.4;
+  const metrics = ctx.measureText('HÄÉgjpq');
+  const ascent = metrics.actualBoundingBoxAscent ?? fontSize * .8;
+  const descent = metrics.actualBoundingBoxDescent ?? fontSize * .2;
+  const clearance = fontSize * (text.role === 'headline' ? .08 : .16);
+  return Math.max(fontSize * requested, ascent + descent + clearance);
 };
 
 const layoutText = (ctx, text, maxWidth, scale = 1, advanced = false) => {
   const output = [];
+  const paragraphEnds = new Set();
   const paragraphs = String(text.value ?? '').split('\n');
   ctx.font = getTextFont(text, scale, advanced);
-  ctx.letterSpacing = advanced ? `${text.tracking * scale}px` : '0px';
+  ctx.letterSpacing = `${(Number(text.tracking) || 0) * scale}px`;
+  ctx.fontKerning = 'normal';
+  ctx.textBaseline = 'alphabetic';
 
   paragraphs.forEach((paragraph, paragraphIndex) => {
     const source = text.uppercase ? paragraph.toUpperCase() : paragraph;
     if (!source.trim()) {
       output.push('');
+      paragraphEnds.add(output.length - 1);
       return;
     }
 
@@ -150,12 +151,16 @@ const layoutText = (ctx, text, maxWidth, scale = 1, advanced = false) => {
     });
     if (line) {
       output.push(line);
+      paragraphEnds.add(output.length - 1);
     }
   });
 
   return {
     lines: output,
-    lineHeight: getLineHeight(text, scale, advanced),
+    paragraphEnds,
+    lineHeight: getLineHeight(ctx, text, scale),
+    ascent: ctx.measureText('HÄÉgjpq').actualBoundingBoxAscent ?? text.size * scale * .8,
+    descent: ctx.measureText('HÄÉgjpq').actualBoundingBoxDescent ?? text.size * scale * .2,
   };
 };
 
@@ -169,11 +174,12 @@ const getTextLeft = (align, x, width) => {
   return x;
 };
 
-const shouldJustifyLine = (align, line, index, lines) => (
+const shouldJustifyLine = (align, line, index, lines, paragraphEnds) => (
   align === 'justify' &&
   line.trim().includes(' ') &&
   index < lines.length - 1 &&
-  lines[index + 1] !== ''
+  lines[index + 1] !== '' &&
+  !paragraphEnds.has(index)
 );
 
 const drawJustifiedLine = (ctx, line, y, maxWidth, tracking) => {
@@ -186,6 +192,11 @@ const drawJustifiedLine = (ctx, line, y, maxWidth, tracking) => {
   const wordWidths = words.map((word) => ctx.measureText(word).width);
   const totalWordsWidth = wordWidths.reduce((sum, width) => sum + width, 0);
   const gap = (maxWidth - totalWordsWidth) / (words.length - 1);
+  const normalGap = ctx.measureText(' ').width;
+  if (gap > normalGap * 1.8 || gap < normalGap * .8) {
+    ctx.fillText(line, 0, y);
+    return;
+  }
 
   let cursorX = 0;
   words.forEach((word, index) => {
@@ -201,7 +212,7 @@ const drawTextLayer = (ctx, layer, width, height, scene) => {
   const maxWidth = width * text.width * scale;
   const anchorX = layer.transform.x * width;
   const anchorY = layer.transform.y * height;
-  const { lines, lineHeight } = layoutText(ctx, text, maxWidth, scale, advanced);
+  const { lines, lineHeight, ascent, descent, paragraphEnds } = layoutText(ctx, text, maxWidth, scale, advanced);
 
   ctx.save();
   ctx.translate(anchorX, anchorY);
@@ -209,15 +220,15 @@ const drawTextLayer = (ctx, layer, width, height, scene) => {
   ctx.fillStyle = text.color;
   ctx.font = getTextFont(text, scale, advanced);
   ctx.fontKerning = 'normal';
-  ctx.textBaseline = 'top';
+  ctx.textBaseline = 'alphabetic';
   ctx.textAlign = text.align === 'justify' ? 'left' : text.align;
   if ('letterSpacing' in ctx) {
-    ctx.letterSpacing = advanced ? `${text.tracking * scale}px` : '0px';
+    ctx.letterSpacing = `${(Number(text.tracking) || 0) * scale}px`;
   }
 
   lines.forEach((line, index) => {
-    const y = index * lineHeight;
-    if (shouldJustifyLine(text.align, line, index, lines)) {
+    const y = ascent + index * lineHeight;
+    if (shouldJustifyLine(text.align, line, index, lines, paragraphEnds)) {
       drawJustifiedLine(ctx, line, y, maxWidth, advanced ? text.tracking : 0);
     } else {
       ctx.fillText(line, 0, y);
@@ -412,15 +423,15 @@ const measureUnrotatedBounds = ({ layer, width, height, getImage, advanced = fal
     const scale = layer.transform.scale;
     const text = { ...layer.text, role: layer.role, font: fontFamily };
     const maxWidth = width * text.width * scale;
-    const { lines, lineHeight } = layoutText(ctx, text, maxWidth, scale, advanced);
+    const { lines, lineHeight, ascent, descent, paragraphEnds } = layoutText(ctx, text, maxWidth, scale, advanced);
     const longestLine = lines.reduce((max, line, index) => {
-      if (shouldJustifyLine(layer.text.align, line, index, lines)) {
+      if (shouldJustifyLine(layer.text.align, line, index, lines, paragraphEnds)) {
         return Math.max(max, maxWidth);
       }
       const candidate = ctx.measureText(line).width;
       return Math.max(max, candidate);
     }, 0);
-    const blockHeight = Math.max(1, lines.length) * lineHeight;
+    const blockHeight = ascent + descent + Math.max(0, lines.length - 1) * lineHeight;
     const left = getTextLeft(layer.text.align, layer.transform.x * width, longestLine);
     return {
       x: left,

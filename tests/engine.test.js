@@ -6,7 +6,7 @@ const context = () => ({
   font: '10px Arial', letterSpacing: '0px',
   measureText(value) { return {width: value.length * Number(this.font.match(/(\d+)px/)?.[1] ?? 10) / 2}; },
   save() {}, restore() {}, translate() {}, rotate() {}, clearRect() {}, fillRect() {},
-  fillText(text) { calls.push({text, font: this.font}); },
+  fillText(text,x,y) { calls.push({text, font: this.font,x,y,spacing:this.letterSpacing}); },
 });
 globalThis.document = {createElement: () => ({getContext: context})};
 const {measureLayerBounds, renderScene} = await import('../src/engine.js');
@@ -55,4 +55,30 @@ test('generic font families remain CSS keywords for canvas rendering', () => {
     renderScene({ctx:context(),width:1000,height:1000,scene:{fontFamily:family,background:{mode:'solid',colorA:'#000'},layers:[textLayer()]},getImage:()=>null});
     assert.ok(calls[0].font.includes(`px ${family},`));
   }
+});
+
+
+test('stored line spacing and tracking apply without advanced mode', () => {
+  const layer=textLayer(); layer.text.value='Ägj\nÉpq'; layer.text.leading=1.45; layer.text.tracking=-.5;
+  calls.length=0;
+  renderScene({ctx:context(),width:1000,height:1000,scene:{fontFamily:'Arial',background:{mode:'solid',colorA:'#000'},layers:[layer]},getImage:()=>null});
+  assert.equal(calls[1].y-calls[0].y,145);
+  assert.equal(calls[0].spacing,'-0.5px');
+});
+
+test('glyph metrics prevent colliding lines even with tight requested leading', () => {
+  const layer=textLayer(); layer.text.value='Ägj\nÉpq'; layer.text.leading=.5;
+  const ctx=context(); const base=ctx.measureText;
+  ctx.measureText=function(value) { return {...base.call(this,value),actualBoundingBoxAscent:90,actualBoundingBoxDescent:25}; };
+  calls.length=0;
+  renderScene({ctx,width:1000,height:1000,scene:{fontFamily:'Arial',background:{mode:'solid',colorA:'#000'},layers:[layer]},getImage:()=>null});
+  assert.equal(calls[1].y-calls[0].y,123);
+  assert.equal(calls[0].y,90);
+});
+
+test('explicit paragraph endings are never expanded into justified word gaps', () => {
+  const layer=textLayer(); layer.text.value='A B\nC D'; layer.text.align='justify';
+  calls.length=0;
+  renderScene({ctx:context(),width:1000,height:1000,scene:{fontFamily:'Arial',background:{mode:'solid',colorA:'#000'},layers:[layer]},getImage:()=>null});
+  assert.deepEqual(calls.map(call=>call.text),['A B','C D']);
 });

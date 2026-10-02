@@ -65,10 +65,10 @@ const getNewsLayoutPresets = (presetId) => {
       label: 'News Compact',
       headline: {
         x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.5 : 0.54,
+        y: isPortrait ? 0.46 : 0.48,
         width: isPortrait ? 0.76 : 0.74,
         size: isPortrait ? 116 : 104,
-        leading: 0.92,
+        leading: 1.08,
         tracking: -1,
         weight: '700',
       },
@@ -77,14 +77,14 @@ const getNewsLayoutPresets = (presetId) => {
         y: isPortrait ? 0.73 : 0.76,
         width: isPortrait ? 0.54 : 0.56,
         size: isPortrait ? 35 : 31,
-        leading: 1.24,
+        leading: 1.4,
         tracking: 0,
-        weight: '600',
+        weight: '400',
       },
       kicker: {
-        x: 0.93,
+        x: isPortrait ? 0.1 : 0.11,
         y: isPortrait ? 0.07 : 0.08,
-        align: 'right',
+        align: 'left',
       },
       caption: {
         x: isPortrait ? 0.1 : 0.11,
@@ -103,7 +103,7 @@ const getNewsLayoutPresets = (presetId) => {
         y: isPortrait ? 0.16 : 0.18,
         width: isPortrait ? 0.62 : 0.6,
         size: isPortrait ? 102 : 94,
-        leading: 0.94,
+        leading: 1.1,
         tracking: -0.8,
         weight: '700',
       },
@@ -112,14 +112,14 @@ const getNewsLayoutPresets = (presetId) => {
         y: isPortrait ? 0.78 : 0.8,
         width: isPortrait ? 0.48 : 0.5,
         size: isPortrait ? 34 : 30,
-        leading: 1.28,
+        leading: 1.42,
         tracking: 0,
-        weight: '600',
+        weight: '400',
       },
       kicker: {
-        x: 0.93,
+        x: isPortrait ? 0.1 : 0.11,
         y: isPortrait ? 0.07 : 0.08,
-        align: 'right',
+        align: 'left',
       },
       caption: {
         x: isPortrait ? 0.1 : 0.11,
@@ -135,10 +135,10 @@ const getNewsLayoutPresets = (presetId) => {
       label: 'News Hero',
       headline: {
         x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.58 : 0.61,
+        y: isPortrait ? 0.52 : 0.52,
         width: isPortrait ? 0.78 : 0.76,
         size: isPortrait ? 126 : 112,
-        leading: 0.9,
+        leading: 1.06,
         tracking: -1.2,
         weight: '800',
       },
@@ -147,14 +147,14 @@ const getNewsLayoutPresets = (presetId) => {
         y: isPortrait ? 0.84 : 0.86,
         width: isPortrait ? 0.46 : 0.48,
         size: isPortrait ? 31 : 28,
-        leading: 1.26,
+        leading: 1.4,
         tracking: 0,
-        weight: '600',
+        weight: '400',
       },
       kicker: {
-        x: 0.93,
+        x: isPortrait ? 0.1 : 0.11,
         y: isPortrait ? 0.07 : 0.08,
-        align: 'right',
+        align: 'left',
       },
       caption: {
         x: isPortrait ? 0.1 : 0.11,
@@ -335,7 +335,6 @@ const App = () => {
   const [notice, setNotice] = useState('');
   const [exporting, setExporting] = useState(false);
   const objectUrls = useRef(new Set());
-  const [typoAdvanced, setTypoAdvanced] = useState(false);
   const fontInputRef = useRef(null);
   const canvasRef = useRef(null);
   const stageRef = useRef(null);
@@ -1119,10 +1118,6 @@ const App = () => {
             ...['Arial', 'Helvetica', 'Verdana', 'Georgia', 'Trebuchet MS', 'Courier New', 'sans-serif', 'serif', 'monospace'].map(name => ({value:name,label:name})), ...uploadedFonts
           ]} onChange={setFontChoice} />
           <div className="status-pill">{uploadedFonts.find(font => font.value === effectiveFont)?.label ?? (effectiveFont === 'degular' ? (hasDegular ? 'Degular geladen' : 'Degular nicht verfügbar. Schriftdatei laden.') : `${effectiveFont} aktiv`)}</div>
-          <ToggleField label="Typo Advanced" checked={typoAdvanced} onChange={(value) => {
-            setTypoAdvanced(value);
-            updateScene('typoAdvanced', value);
-          }} />
           <div className="field-grid">
             <ColorField
               label="Headline"
@@ -1437,11 +1432,11 @@ const App = () => {
                 <div className="field-grid">
                   <SliderField label="Breite" value={activeLayer.text.width} min={0.12} max={0.94} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'text.width', value)} />
                 </div>
-                {typoAdvanced && (
+                {(
                   <>
                     <div className="field-grid">
                       <SliderField label="Größe" value={activeLayer.text.size} min={14} max={180} step={1} format={(value) => `${Math.round(value)}px`} onChange={(value) => updateLayer(activeLayer.id, 'text.size', value)} />
-                      <SliderField label="Zeilenabstand" value={activeLayer.text.leading} min={0.45} max={1.8} step={0.01} onChange={(value) => updateLayer(activeLayer.id, 'text.leading', value)} />
+                      <SliderField label="Zeilenabstand" value={activeLayer.text.leading} min={1} max={2} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => updateLayer(activeLayer.id, 'text.leading', value)} />
                     </div>
                     <div className="field-grid">
                       <SliderField label="Tracking" value={activeLayer.text.tracking} min={-4} max={8} step={0.1} onChange={(value) => updateLayer(activeLayer.id, 'text.tracking', value)} />

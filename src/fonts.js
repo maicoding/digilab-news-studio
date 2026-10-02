@@ -1,5 +1,5 @@
 export const textWeight = (layer, advanced) => {
-  const requested = Number(advanced ? layer.text.weight : layer.role === 'headline' ? 700 : layer.role === 'kicker' ? 600 : 400);
+  const requested = Number(layer.text.weight ?? (layer.role === 'headline' ? 700 : layer.role === 'kicker' ? 600 : 400));
   return Math.min(900, Math.max(100, requested || 400));
 };
 const pending = new Map();
