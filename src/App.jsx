@@ -29,6 +29,7 @@ import {
   createTextLayer,
 } from './presets.js';
 import { measureLayerBounds, renderScene } from './engine.js';
+import { loadDegular, textWeight, fontWeight } from './fonts.js';
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const COLOR_PRESETS = [
@@ -297,13 +298,13 @@ const ColorField = ({ label, value, onChange }) => (
 );
 
 const Section = ({ title, icon: Icon, children }) => (
-  <section className="panel">
-    <div className="panel__title">
+  <details className="panel" open>
+    <summary className="panel__title">
       <Icon size={15} />
       <span>{title}</span>
-    </div>
+    </summary>
     <div className="panel__body">{children}</div>
-  </section>
+  </details>
 );
 
 const UploadButton = ({ label, accept, onSelect }) => {
@@ -325,10 +326,14 @@ const App = () => {
   const [scene, setScene] = useState(initialScene);
   const [activeLayerId, setActiveLayerId] = useState(initialScene.layers[initialScene.layers.length - 1]?.id ?? null);
   const [assetVersion, setAssetVersion] = useState(0);
-  const [previewZoom, setPreviewZoom] = useState(0.78);
+  const [previewZoom, setPreviewZoom] = useState(1);
   const [dragState, setDragState] = useState(null);
   const [logoLibrary, setLogoLibrary] = useState(BUILT_IN_LOGOS);
   const [hasDegular, setHasDegular] = useState(false);
+  const [fontChoice, setFontChoice] = useState('auto');
+  const [notice, setNotice] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const objectUrls = useRef(new Set());
   const [typoAdvanced, setTypoAdvanced] = useState(false);
   const fontInputRef = useRef(null);
   const canvasRef = useRef(null);
@@ -339,6 +344,7 @@ const App = () => {
   const preset = CANVAS_PRESETS.find((item) => item.id === scene.presetId) ?? CANVAS_PRESETS[0];
   const activeLayer = scene.layers.find((layer) => layer.id === activeLayerId) ?? null;
   const gridSpec = getGridSpec(scene.presetId);
+  const effectiveFont = fontChoice === 'auto' ? (hasDegular ? 'degular' : 'Arial') : fontChoice;
 
   const getPrimaryTextLayer = (role) => scene.layers.find((layer) => layer.kind === 'text' && layer.role === role) ?? null;
   const getPrimaryTextLayerByRoles = (...roles) => scene.layers.find((layer) => layer.kind === 'text' && roles.includes(layer.role)) ?? null;
@@ -432,7 +438,7 @@ const App = () => {
     if (cached?.status === 'loaded') {
       return cached.image;
     }
-    if (cached?.status === 'loading') {
+    if (cached?.status === 'loading' || cached?.status === 'error') {
       return null;
     }
 
@@ -451,33 +457,35 @@ const App = () => {
   };
 
   useEffect(() => {
-    document.fonts?.ready.then(() => {
-      setHasDegular(document.fonts?.check('600 32px Degular') ?? false);
-      setAssetVersion((value) => value + 1);
+    let mounted = true;
+    Promise.all([400, 600, 700].map(weight => loadDegular(weight))).then(results => {
+      if (mounted) { setHasDegular(results.every(Boolean)); setAssetVersion(value => value + 1); }
     });
+    return () => { mounted = false; };
   }, []);
+
+  useEffect(() => () => { objectUrls.current.forEach(url => URL.revokeObjectURL(url)); }, []);
+
+  useEffect(() => {
+    const used = new Set([scene.background.imageSrc, ...logoLibrary.map(entry => entry.src),
+      ...scene.layers.flatMap(layer => [layer.assetSrc, layer.shape?.imageSrc])].filter(Boolean));
+    for (const url of objectUrls.current) {
+      if (!used.has(url)) { URL.revokeObjectURL(url); objectUrls.current.delete(url); imageCacheRef.current.delete(url); }
+    }
+  }, [scene, logoLibrary]);
 
   const previewScale = useMemo(() => {
     if (!stageSize.width || !stageSize.height) {
       return previewZoom;
     }
     return Math.min(
-      (stageSize.width - 96) / preset.width,
-      (stageSize.height - 120) / preset.height,
+      Math.max(80, stageSize.width - 32) / preset.width,
+      Math.max(80, stageSize.height - 32) / preset.height,
       1,
     ) * previewZoom;
   }, [preset.height, preset.width, previewZoom, stageSize.height, stageSize.width]);
 
   const updateScene = (path, value) => setScene((current) => deepSet(current, path, value));
-
-  const requireDegular = () => {
-    const loaded = document.fonts?.check('600 32px Degular') ?? false;
-    setHasDegular(loaded);
-    if (!loaded) {
-      fontInputRef.current?.click();
-    }
-    return loaded;
-  };
 
   const updateLayer = (layerId, path, value) => {
     setScene((current) => ({
@@ -786,7 +794,11 @@ const App = () => {
     if (!file) {
       return;
     }
+    if (!file.type.startsWith('image/') || file.size > 20 * 1024 * 1024) {
+      setNotice('Bitte eine Bilddatei bis 20 MB wählen.'); event.target.value = ''; return;
+    }
     const src = URL.createObjectURL(file);
+    objectUrls.current.add(src);
     callback({ file, src });
     event.target.value = '';
   };
@@ -796,40 +808,56 @@ const App = () => {
     if (!file) {
       return;
     }
-    const src = URL.createObjectURL(file);
     try {
-      const face = new FontFace('Degular', `url(${src})`, { style: 'normal', weight: '400 800' });
+      const name = file.name.toLowerCase();
+      const bytes = await file.arrayBuffer();
+      const weight = fontWeight(bytes, file.name);
+      const style = /italic|oblique/.test(name) ? 'italic' : 'normal';
+      const face = new FontFace('Degular', bytes, { style, weight: String(weight) });
       await face.load();
       document.fonts.add(face);
-      setHasDegular(true);
-      setAssetVersion((value) => value + 1);
-    } catch (error) {
-      console.error(error);
-      window.alert('Degular-Datei nicht geladen.');
-      URL.revokeObjectURL(src);
+      const results = await Promise.all([400, 600, 700].map(w => loadDegular(w)));
+      setHasDegular(results.every(Boolean));
+      setNotice(`Schriftschnitt geladen: ${weight} ${style}`);
+      setAssetVersion(value => value + 1);
+    } catch {
+      setNotice('Schriftdatei konnte nicht geladen werden.');
     }
     event.target.value = '';
   };
 
-  const exportPng = () => {
-    if (!requireDegular()) {
-      return;
-    }
-    const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = preset.width;
-    exportCanvas.height = preset.height;
-    const ctx = exportCanvas.getContext('2d');
-    renderScene({
-      ctx,
-      width: preset.width,
-      height: preset.height,
-      scene,
-      getImage,
-    });
-    const link = document.createElement('a');
-    link.download = `digilab-news-${Date.now()}.png`;
-    link.href = exportCanvas.toDataURL('image/png');
-    link.click();
+  const exportPng = async () => {
+    setExporting(true);
+    setNotice('');
+    try {
+      const textLayers = scene.layers.filter(layer => layer.visible && layer.kind === 'text');
+      const fonts = effectiveFont === 'degular' ? await Promise.all(textLayers.map(layer => loadDegular(layer.text.italic ? (textWeight(layer, scene.typoAdvanced) >= 700 ? 700 : 400) : textWeight(layer, scene.typoAdvanced), layer.text.italic))) : [];
+      if (fonts.some(loaded => !loaded)) throw new Error('Benötigter Degular-Schriftschnitt fehlt. Bitte passende Schriftdatei laden.');
+      const sources = [scene.background.mode === 'image' && scene.background.imageSrc,
+        ...scene.layers.filter(layer => layer.visible).map(layer => layer.assetSrc || layer.shape?.imageSrc)].filter(Boolean);
+      await Promise.all([...new Set(sources)].map(src => new Promise((resolve, reject) => {
+        const image = new Image();
+        const timeout = setTimeout(() => { image.src = ''; reject(new Error('Bildladen dauert zu lange. Bitte erneut versuchen.')); }, 15000);
+        image.onload = () => { clearTimeout(timeout); imageCacheRef.current.set(src, { status: 'loaded', image }); resolve(); };
+        image.onerror = () => { clearTimeout(timeout); reject(new Error('Ein Bild konnte nicht geladen werden. Bitte erneut hochladen.')); };
+        image.src = src;
+      })));
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = preset.width;
+      exportCanvas.height = preset.height;
+      renderScene({ ctx: exportCanvas.getContext('2d'), width: preset.width, height: preset.height, scene: { ...scene, fontFamily: effectiveFont }, getImage });
+      const blob = await new Promise(resolve => exportCanvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('PNG konnte nicht erstellt werden.');
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `digilab-news-${preset.width}x${preset.height}-${Date.now()}.png`;
+      link.href = url;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      setNotice(`PNG erstellt: ${preset.width} × ${preset.height} Pixel`);
+      setAssetVersion(value => value + 1);
+    } catch (error) { setNotice(error.message); }
+    finally { setExporting(false); }
   };
 
   const layerBounds = useMemo(
@@ -842,10 +870,12 @@ const App = () => {
             width: preset.width,
             height: preset.height,
             getImage,
+            advanced: scene.typoAdvanced,
+            fontFamily: effectiveFont,
           }),
         }))
         .filter((entry) => entry.bounds),
-    [assetVersion, preset.height, preset.width, scene],
+    [assetVersion, preset.height, preset.width, scene, effectiveFont],
   );
 
   useEffect(() => {
@@ -858,10 +888,10 @@ const App = () => {
       ctx,
       width: preset.width,
       height: preset.height,
-      scene,
+      scene: { ...scene, fontFamily: effectiveFont },
       getImage,
     });
-  }, [assetVersion, preset.height, preset.width, scene]);
+  }, [assetVersion, preset.height, preset.width, scene, effectiveFont]);
 
   const getCanvasPoint = (event) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -928,7 +958,7 @@ const App = () => {
     if (!dragState) {
       return;
     }
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     setDragState(null);
   };
 
@@ -938,7 +968,7 @@ const App = () => {
       <aside className="sidebar">
         <div className="sidebar__header">
           <div>
-            <div className="eyebrow">Static Instagram News Builder</div>
+            <div className="eyebrow">Instagram-Beiträge</div>
             <h1>digilab.ai News Studio</h1>
           </div>
           <button
@@ -946,6 +976,8 @@ const App = () => {
             onClick={() => {
               const freshScene = createInitialScene();
               setScene(freshScene);
+              setTypoAdvanced(false);
+              setNotice('');
               setActiveLayerId(freshScene.layers[freshScene.layers.length - 1]?.id ?? null);
             }}
           >
@@ -976,11 +1008,12 @@ const App = () => {
               <Shapes size={16} />
               Shapes variieren
             </button>
-            <button className="accent-button" type="button" onClick={exportPng}>
+            <button className="accent-button" type="button" onClick={exportPng} disabled={exporting}>
               <Download size={16} />
-              PNG exportieren
+              {exporting ? 'PNG wird erstellt…' : 'PNG exportieren'}
             </button>
           </div>
+          <p className="notice" role="status" aria-live="polite">{notice}</p>
         </Section>
 
         <Section title="News Layout" icon={Type}>
@@ -1079,7 +1112,10 @@ const App = () => {
 
         <Section title="Textfarben" icon={Type}>
           <UploadButton label="Degular laden" accept=".otf,.ttf,.woff,.woff2,font/*" onSelect={handleFontUpload} />
-          <div className="status-pill">{hasDegular ? 'Degular geladen' : 'Degular fehlt'}</div>
+          <SelectField label="Schrift" value={fontChoice} options={[
+            {value:'auto', label:'Automatisch (Degular / Arial)'}, {value:'degular',label:'Degular'}, {value:'Arial',label:'Arial'}
+          ]} onChange={setFontChoice} />
+          <div className="status-pill">{effectiveFont === 'Arial' ? 'Arial aktiv' : hasDegular ? 'Degular geladen' : 'Degular fehlt. Schriftdatei laden.'}</div>
           <ToggleField label="Typo Advanced" checked={typoAdvanced} onChange={(value) => {
             setTypoAdvanced(value);
             updateScene('typoAdvanced', value);
@@ -1164,6 +1200,7 @@ const App = () => {
                 <button
                   type="button"
                   className="icon-button"
+                  aria-label={`${layer.name} ${layer.visible ? 'ausblenden' : 'einblenden'}`}
                   onClick={() => updateLayer(layer.id, 'visible', !layer.visible)}
                 >
                   {layer.visible ? <Eye size={15} /> : <EyeOff size={15} />}
@@ -1188,11 +1225,11 @@ const App = () => {
                 <span>Layer Tools</span>
               </div>
               <div className="button-row">
-                <button className="ghost-button" type="button" onClick={() => moveLayer(activeLayer.id, 1)}>
+                <button className="ghost-button" type="button" onClick={() => moveLayer(activeLayer.id, -1)}>
                   <ArrowDown size={16} />
                   Runter
                 </button>
-                <button className="ghost-button" type="button" onClick={() => moveLayer(activeLayer.id, -1)}>
+                <button className="ghost-button" type="button" onClick={() => moveLayer(activeLayer.id, 1)}>
                   <ArrowUp size={16} />
                   Hoch
                 </button>
@@ -1381,7 +1418,7 @@ const App = () => {
                   />
                 </label>
                 <div className="field-grid">
-                  <div className="status-pill">Schrift: Degular</div>
+                  <div className="status-pill">Schrift: {effectiveFont === 'degular' ? 'Degular' : 'Arial'}</div>
                   <SelectField
                     label="Ausrichtung"
                     value={activeLayer.text.align}
@@ -1407,8 +1444,8 @@ const App = () => {
                       <SliderField label="Tracking" value={activeLayer.text.tracking} min={-4} max={8} step={0.1} onChange={(value) => updateLayer(activeLayer.id, 'text.tracking', value)} />
                       <SelectField
                         label="Weight"
-                        value={activeLayer.text.weight}
-                        options={['400', '500', '600', '700', '800']}
+                        value={String(textWeight(activeLayer, true))}
+                        options={['400', '600', '700']}
                         onChange={(value) => updateLayer(activeLayer.id, 'text.weight', value)}
                       />
                     </div>
@@ -1439,6 +1476,7 @@ const App = () => {
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
           >
             <canvas
               ref={canvasRef}
@@ -1472,6 +1510,16 @@ const App = () => {
                     top: bounds.y * previewScale,
                     width: Math.max(12, bounds.width * previewScale),
                     height: Math.max(12, bounds.height * previewScale),
+                  }}
+                  aria-label={`${scene.layers.find(layer => layer.id === layerId)?.name} auswählen`}
+                  onKeyDown={event => {
+                    const delta = {ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1]}[event.key];
+                    if (!delta) return;
+                    event.preventDefault();
+                    const layer = scene.layers.find(item => item.id === layerId);
+                    const step = event.shiftKey ? 10 : 1;
+                    updateLayer(layerId, 'transform.x', clamp(layer.transform.x + delta[0] * step / preset.width, 0, 1));
+                    updateLayer(layerId, 'transform.y', clamp(layer.transform.y + delta[1] * step / preset.height, 0, 1));
                   }}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => setActiveLayerId(layerId)}

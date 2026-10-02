@@ -42,7 +42,7 @@ export const BUILT_IN_LOGOS = [
   {
     id: 'digilab-kombi-black',
     name: 'DigiLab.ai Kombi',
-    src: '/logos/digilab-ai-kombi-black.png',
+    src: `${import.meta.env.BASE_URL}logos/digilab-ai-kombi-black.png`,
     defaults: {
       size: 0.28,
       x: 0.2,
@@ -56,7 +56,7 @@ export const BUILT_IN_LOGOS = [
   {
     id: 'digilab-bildmarke',
     name: 'DigiLab.ai Bildmarke',
-    src: '/logos/pixel-logo.png',
+    src: `${import.meta.env.BASE_URL}logos/pixel-logo.png`,
     defaults: {
       size: 0.16,
       x: 0.84,
@@ -122,7 +122,7 @@ export const createLogoLayer = (index, overrides = {}) => ({
   opacity: 1,
   blendMode: 'source-over',
   blur: 0,
-  assetSrc: overrides.assetSrc ?? '/logos/digilab-ai-kombi-black.png',
+  assetSrc: overrides.assetSrc ?? `${import.meta.env.BASE_URL}logos/digilab-ai-kombi-black.png`,
   assetName: overrides.assetName ?? 'DigiLab.ai Kombi',
   transform: {
     x: overrides.x ?? 0.2,

@@ -1,3 +1,4 @@
+import { textWeight } from './fonts.js';
 const scratch = new Map();
 const tintCache = new Map();
 const measureCanvas = document.createElement('canvas');
@@ -18,6 +19,7 @@ const getScratchCanvas = (key, width, height) => {
   let canvas = scratch.get(key);
   if (!canvas) {
     canvas = document.createElement('canvas');
+    if (scratch.size >= 24) scratch.delete(scratch.keys().next().value);
     scratch.set(key, canvas);
   }
   if (canvas.width !== width || canvas.height !== height) {
@@ -85,20 +87,15 @@ const getProcessedAsset = (image, settings, color) => {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
+  if (tintCache.size >= 24) tintCache.delete(tintCache.keys().next().value);
   tintCache.set(key, canvas);
   return canvas;
 };
 
 const getTextFont = (text, scale = 1, advanced = false) => {
-  const roleWeights = {
-    headline: '700',
-    textbox: '500',
-    body: '500',
-    kicker: '600',
-    caption: '500',
-  };
-  const weight = advanced ? text.weight : roleWeights[text.role] ?? roleWeights.body;
-  return `${weight} ${Math.round(text.size * scale)}px "Degular", "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  const weight = textWeight({text, role: text.role}, advanced);
+  const italicWeight = weight >= 700 ? 700 : 400;
+  return `${text.italic ? 'italic' : 'normal'} ${text.italic ? italicWeight : weight} ${Math.round(text.size * scale)}px "${text.font ?? 'degular'}", "Helvetica Neue", Helvetica, Arial, sans-serif`;
 };
 
 const getLineHeight = (text, scale = 1, advanced = false) => {
@@ -120,6 +117,7 @@ const layoutText = (ctx, text, maxWidth, scale = 1, advanced = false) => {
   const output = [];
   const paragraphs = String(text.value ?? '').split('\n');
   ctx.font = getTextFont(text, scale, advanced);
+  ctx.letterSpacing = advanced ? `${text.tracking * scale}px` : '0px';
 
   paragraphs.forEach((paragraph, paragraphIndex) => {
     const source = text.uppercase ? paragraph.toUpperCase() : paragraph;
@@ -128,11 +126,20 @@ const layoutText = (ctx, text, maxWidth, scale = 1, advanced = false) => {
       return;
     }
 
-    const words = source.split(/\s+/);
+    const words = source.split(/\s+/).flatMap(word => {
+      if (ctx.measureText(word).width <= maxWidth) return [word];
+      const parts = []; let part = '';
+      for (const char of Array.from(word)) {
+        if (part && ctx.measureText(part + char).width > maxWidth) { parts.push(part); part = ''; }
+        part += char;
+      }
+      if (part) parts.push(part);
+      return parts;
+    });
     let line = '';
     words.forEach((word) => {
       const candidate = line ? `${line} ${word}` : word;
-      const candidateWidth = ctx.measureText(candidate).width + (advanced ? Math.max(0, candidate.length - 1) * (text.tracking * scale) : 0);
+      const candidateWidth = ctx.measureText(candidate).width;
       if (candidateWidth > maxWidth && line) {
         output.push(line);
         line = word;
@@ -187,24 +194,24 @@ const drawJustifiedLine = (ctx, line, y, maxWidth, tracking) => {
 };
 
 const drawTextLayer = (ctx, layer, width, height, scene) => {
-  const text = layer.text;
-  text.role = layer.role;
+  const text = { ...layer.text, role: layer.role, font: scene.fontFamily };
+  const scale = layer.transform.scale;
   const advanced = scene.typoAdvanced === true;
-  const maxWidth = width * text.width;
+  const maxWidth = width * text.width * scale;
   const anchorX = layer.transform.x * width;
   const anchorY = layer.transform.y * height;
-  const { lines, lineHeight } = layoutText(ctx, { ...text, role: layer.role }, maxWidth, 1, advanced);
+  const { lines, lineHeight } = layoutText(ctx, text, maxWidth, scale, advanced);
 
   ctx.save();
   ctx.translate(anchorX, anchorY);
   ctx.rotate((layer.transform.rotation * Math.PI) / 180);
   ctx.fillStyle = text.color;
-  ctx.font = getTextFont(text, 1, advanced);
+  ctx.font = getTextFont(text, scale, advanced);
   ctx.fontKerning = 'normal';
   ctx.textBaseline = 'top';
   ctx.textAlign = text.align === 'justify' ? 'left' : text.align;
   if ('letterSpacing' in ctx) {
-    ctx.letterSpacing = advanced ? `${text.tracking}px` : '0px';
+    ctx.letterSpacing = advanced ? `${text.tracking * scale}px` : '0px';
   }
 
   lines.forEach((line, index) => {
@@ -301,7 +308,7 @@ const drawPixelShape = (ctx, layer, width, height, getImage) => {
     cctx.drawImage(scratchCanvas, 0, 0, contentSize, contentSize);
     cctx.restore();
 
-    ctx.globalAlpha = layer.shape.imageOpacity ?? 1;
+    ctx.globalAlpha *= layer.shape.imageOpacity ?? 1;
     ctx.globalCompositeOperation = layer.shape.imageBlendMode ?? 'source-over';
     ctx.drawImage(contentCanvas, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
   }
@@ -368,7 +375,7 @@ const drawBackground = (ctx, width, height, background, getImage) => {
   ctx.fillRect(0, 0, width, height);
 };
 
-export const measureLayerBounds = ({ layer, width, height, getImage }) => {
+const measureUnrotatedBounds = ({ layer, width, height, getImage, advanced = false, fontFamily = 'degular' }) => {
   if (!layer?.visible) {
     return null;
   }
@@ -401,9 +408,10 @@ export const measureLayerBounds = ({ layer, width, height, getImage }) => {
 
   if (layer.kind === 'text') {
     const ctx = measureCanvas.getContext('2d');
-    const maxWidth = width * layer.text.width;
-    const { lines, lineHeight } = layoutText(ctx, { ...layer.text, role: layer.role }, maxWidth);
-    ctx.font = getTextFont(layer.text);
+    const scale = layer.transform.scale;
+    const text = { ...layer.text, role: layer.role, font: fontFamily };
+    const maxWidth = width * text.width * scale;
+    const { lines, lineHeight } = layoutText(ctx, text, maxWidth, scale, advanced);
     const longestLine = lines.reduce((max, line, index) => {
       if (shouldJustifyLine(layer.text.align, line, index, lines)) {
         return Math.max(max, maxWidth);
@@ -422,6 +430,19 @@ export const measureLayerBounds = ({ layer, width, height, getImage }) => {
   }
 
   return null;
+};
+
+export const measureLayerBounds = (options) => {
+  const bounds = measureUnrotatedBounds(options);
+  if (!bounds) return null;
+  const {layer, width, height} = options;
+  const anchorX = layer.transform.x * width, anchorY = layer.transform.y * height;
+  const angle = layer.transform.rotation * Math.PI / 180;
+  const corners = [[bounds.x, bounds.y], [bounds.x + bounds.width, bounds.y],
+    [bounds.x, bounds.y + bounds.height], [bounds.x + bounds.width, bounds.y + bounds.height]]
+    .map(([x,y]) => { const dx=x-anchorX, dy=y-anchorY; return [anchorX+dx*Math.cos(angle)-dy*Math.sin(angle), anchorY+dx*Math.sin(angle)+dy*Math.cos(angle)]; });
+  const xs=corners.map(point=>point[0]), ys=corners.map(point=>point[1]);
+  return {x:Math.min(...xs), y:Math.min(...ys), width:Math.max(...xs)-Math.min(...xs), height:Math.max(...ys)-Math.min(...ys)};
 };
 
 export const renderScene = ({ ctx, width, height, scene, getImage }) => {
