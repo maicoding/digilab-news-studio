@@ -94,8 +94,9 @@ const getProcessedAsset = (image, settings, color) => {
 
 const getTextFont = (text, scale = 1, advanced = false) => {
   const weight = textWeight({text, role: text.role}, advanced);
-  const italicWeight = weight >= 700 ? 700 : 400;
-  return `${text.italic ? 'italic' : 'normal'} ${text.italic ? italicWeight : weight} ${Math.round(text.size * scale)}px "${text.font ?? 'degular'}", "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  const family = text.font ?? 'degular';
+  const cssFamily = ['serif', 'sans-serif', 'monospace'].includes(family) ? family : `"${family}"`;
+  return `${text.italic ? 'italic' : 'normal'} ${weight} ${Math.round(text.size * scale)}px ${cssFamily}, "Helvetica Neue", Helvetica, Arial, sans-serif`;
 };
 
 const getLineHeight = (text, scale = 1, advanced = false) => {

@@ -331,6 +331,7 @@ const App = () => {
   const [logoLibrary, setLogoLibrary] = useState(BUILT_IN_LOGOS);
   const [hasDegular, setHasDegular] = useState(false);
   const [fontChoice, setFontChoice] = useState('auto');
+  const [uploadedFonts, setUploadedFonts] = useState([]);
   const [notice, setNotice] = useState('');
   const [exporting, setExporting] = useState(false);
   const objectUrls = useRef(new Set());
@@ -813,12 +814,13 @@ const App = () => {
       const bytes = await file.arrayBuffer();
       const weight = fontWeight(bytes, file.name);
       const style = /italic|oblique/.test(name) ? 'italic' : 'normal';
-      const face = new FontFace('Degular', bytes, { style, weight: String(weight) });
+      const family = `UploadFont${Date.now()}${Math.random().toString(36).slice(2,7)}`;
+      const face = new FontFace(family, bytes, { style, weight: String(weight) });
       await face.load();
       document.fonts.add(face);
-      const results = await Promise.all([400, 600, 700].map(w => loadDegular(w)));
-      setHasDegular(results.every(Boolean));
-      setNotice(`Schriftschnitt geladen: ${weight} ${style}`);
+      setUploadedFonts(current => [...current, {value: family, label: file.name}]);
+      setFontChoice(family);
+      setNotice(`Schrift geladen: ${file.name}`);
       setAssetVersion(value => value + 1);
     } catch {
       setNotice('Schriftdatei konnte nicht geladen werden.');
@@ -831,8 +833,8 @@ const App = () => {
     setNotice('');
     try {
       const textLayers = scene.layers.filter(layer => layer.visible && layer.kind === 'text');
-      const fonts = effectiveFont === 'degular' ? await Promise.all(textLayers.map(layer => loadDegular(layer.text.italic ? (textWeight(layer, scene.typoAdvanced) >= 700 ? 700 : 400) : textWeight(layer, scene.typoAdvanced), layer.text.italic))) : [];
-      if (fonts.some(loaded => !loaded)) throw new Error('Benötigter Degular-Schriftschnitt fehlt. Bitte passende Schriftdatei laden.');
+      await Promise.all(textLayers.map(layer => document.fonts.load(
+        `${layer.text.italic ? 'italic' : 'normal'} ${textWeight(layer, scene.typoAdvanced)} 32px "${effectiveFont}"`, layer.text.value || 'DigiLab')));
       const sources = [scene.background.mode === 'image' && scene.background.imageSrc,
         ...scene.layers.filter(layer => layer.visible).map(layer => layer.assetSrc || layer.shape?.imageSrc)].filter(Boolean);
       await Promise.all([...new Set(sources)].map(src => new Promise((resolve, reject) => {
@@ -854,7 +856,7 @@ const App = () => {
       link.href = url;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
-      setNotice(`PNG erstellt: ${preset.width} × ${preset.height} Pixel`);
+      setNotice(`PNG erstellt: ${preset.width} × ${preset.height} Pixel · ${uploadedFonts.find(font => font.value === effectiveFont)?.label ?? effectiveFont}`);
       setAssetVersion(value => value + 1);
     } catch (error) { setNotice(error.message); }
     finally { setExporting(false); }
@@ -1111,11 +1113,12 @@ const App = () => {
         </Section>
 
         <Section title="Textfarben" icon={Type}>
-          <UploadButton label="Degular laden" accept=".otf,.ttf,.woff,.woff2,font/*" onSelect={handleFontUpload} />
+          <UploadButton label="Schriftdatei laden" accept=".otf,.ttf,.woff,.woff2,font/*" onSelect={handleFontUpload} />
           <SelectField label="Schrift" value={fontChoice} options={[
-            {value:'auto', label:'Automatisch (Degular / Arial)'}, {value:'degular',label:'Degular'}, {value:'Arial',label:'Arial'}
+            {value:'auto', label:'Automatisch (Degular / Arial)'}, {value:'degular',label:'Degular'},
+            ...['Arial', 'Helvetica', 'Verdana', 'Georgia', 'Trebuchet MS', 'Courier New', 'sans-serif', 'serif', 'monospace'].map(name => ({value:name,label:name})), ...uploadedFonts
           ]} onChange={setFontChoice} />
-          <div className="status-pill">{effectiveFont === 'Arial' ? 'Arial aktiv' : hasDegular ? 'Degular geladen' : 'Degular fehlt. Schriftdatei laden.'}</div>
+          <div className="status-pill">{uploadedFonts.find(font => font.value === effectiveFont)?.label ?? (effectiveFont === 'degular' ? (hasDegular ? 'Degular geladen' : 'Degular nicht verfügbar. Schriftdatei laden.') : `${effectiveFont} aktiv`)}</div>
           <ToggleField label="Typo Advanced" checked={typoAdvanced} onChange={(value) => {
             setTypoAdvanced(value);
             updateScene('typoAdvanced', value);
@@ -1418,7 +1421,7 @@ const App = () => {
                   />
                 </label>
                 <div className="field-grid">
-                  <div className="status-pill">Schrift: {effectiveFont === 'degular' ? 'Degular' : 'Arial'}</div>
+                  <div className="status-pill">Schrift: {uploadedFonts.find(font => font.value === effectiveFont)?.label ?? effectiveFont}</div>
                   <SelectField
                     label="Ausrichtung"
                     value={activeLayer.text.align}
@@ -1445,7 +1448,7 @@ const App = () => {
                       <SelectField
                         label="Weight"
                         value={String(textWeight(activeLayer, true))}
-                        options={['400', '600', '700']}
+                        options={['100','200','300','400','500','600','700','800','900']}
                         onChange={(value) => updateLayer(activeLayer.id, 'text.weight', value)}
                       />
                     </div>

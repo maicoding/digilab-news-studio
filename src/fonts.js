@@ -1,6 +1,6 @@
 export const textWeight = (layer, advanced) => {
   const requested = Number(advanced ? layer.text.weight : layer.role === 'headline' ? 700 : layer.role === 'kicker' ? 600 : 400);
-  return requested >= 700 ? 700 : requested >= 600 ? 600 : 400;
+  return Math.min(900, Math.max(100, requested || 400));
 };
 const pending = new Map();
 export const loadDegular = async (weight = 400, italic = false) => {

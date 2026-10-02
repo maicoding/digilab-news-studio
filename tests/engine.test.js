@@ -41,3 +41,18 @@ test('rendering preserves frozen scene data and uses italic, scale and chosen fo
   assert.equal(calls[0].text,'AB');
   assert.match(calls[0].font,/italic 700 200px "Arial"/);
 });
+
+test('export renderer retains intermediate weights and uploaded font families', () => {
+  const layer = textLayer(); layer.text.weight='500'; layer.text.italic=true;
+  calls.length=0;
+  renderScene({ctx:context(),width:1000,height:1000,scene:{fontFamily:'UploadFont123',typoAdvanced:true,background:{mode:'solid',colorA:'#000'},layers:[layer]},getImage:()=>null});
+  assert.match(calls[0].font,/italic 500 100px "UploadFont123"/);
+});
+
+test('generic font families remain CSS keywords for canvas rendering', () => {
+  for (const family of ['serif','sans-serif','monospace']) {
+    calls.length=0;
+    renderScene({ctx:context(),width:1000,height:1000,scene:{fontFamily:family,background:{mode:'solid',colorA:'#000'},layers:[textLayer()]},getImage:()=>null});
+    assert.ok(calls[0].font.includes(`px ${family},`));
+  }
+});
