@@ -143,7 +143,7 @@ const textDefaults = {
   headline: {
     name: 'Headline',
     x: 0.12,
-    y: 0.48,
+    y: 0.40,
     value: 'Digitale\nEntwicklung',
     width: 0.76,
     size: 118,
@@ -159,7 +159,7 @@ const textDefaults = {
   body: {
     name: 'Body',
     x: 0.12,
-    y: 0.79,
+    y: 0.70,
     value: 'Textblock',
     width: 0.72,
     size: 34,
@@ -175,7 +175,7 @@ const textDefaults = {
   textbox: {
     name: 'Textbox',
     x: 0.12,
-    y: 0.74,
+    y: 0.70,
     value: 'Textblock',
     width: 0.58,
     size: 31,
@@ -207,7 +207,7 @@ const textDefaults = {
   caption: {
     name: 'Caption',
     x: 0.12,
-    y: 0.93,
+    y: 0.89,
     value: 'digilab.ai fh dortmund',
     width: 0.28,
     size: 18,

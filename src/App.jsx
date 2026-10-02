@@ -65,7 +65,7 @@ const getNewsLayoutPresets = (presetId) => {
       label: 'News Compact',
       headline: {
         x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.46 : 0.48,
+        y: isPortrait ? 0.40 : 0.40,
         width: isPortrait ? 0.76 : 0.74,
         size: isPortrait ? 116 : 104,
         leading: 1.08,
@@ -74,7 +74,7 @@ const getNewsLayoutPresets = (presetId) => {
       },
       textbox: {
         x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.73 : 0.76,
+        y: isPortrait ? 0.68 : 0.70,
         width: isPortrait ? 0.54 : 0.56,
         size: isPortrait ? 35 : 31,
         leading: 1.4,
@@ -88,7 +88,7 @@ const getNewsLayoutPresets = (presetId) => {
       },
       caption: {
         x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.94 : 0.93,
+        y: 0.89,
       },
       logo: {
         x: isPortrait ? 0.84 : 0.82,
@@ -109,7 +109,7 @@ const getNewsLayoutPresets = (presetId) => {
       },
       textbox: {
         x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.78 : 0.8,
+        y: isPortrait ? 0.68 : 0.70,
         width: isPortrait ? 0.48 : 0.5,
         size: isPortrait ? 34 : 30,
         leading: 1.42,
@@ -123,7 +123,7 @@ const getNewsLayoutPresets = (presetId) => {
       },
       caption: {
         x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.94 : 0.93,
+        y: 0.89,
       },
       logo: {
         x: isPortrait ? 0.85 : 0.84,
@@ -135,7 +135,7 @@ const getNewsLayoutPresets = (presetId) => {
       label: 'News Hero',
       headline: {
         x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.52 : 0.52,
+        y: isPortrait ? 0.43 : 0.42,
         width: isPortrait ? 0.78 : 0.76,
         size: isPortrait ? 126 : 112,
         leading: 1.06,
@@ -144,7 +144,7 @@ const getNewsLayoutPresets = (presetId) => {
       },
       textbox: {
         x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.84 : 0.86,
+        y: isPortrait ? 0.70 : 0.72,
         width: isPortrait ? 0.46 : 0.48,
         size: isPortrait ? 31 : 28,
         leading: 1.4,
@@ -158,7 +158,7 @@ const getNewsLayoutPresets = (presetId) => {
       },
       caption: {
         x: isPortrait ? 0.1 : 0.11,
-        y: isPortrait ? 0.94 : 0.93,
+        y: 0.89,
       },
       logo: {
         x: isPortrait ? 0.86 : 0.85,
